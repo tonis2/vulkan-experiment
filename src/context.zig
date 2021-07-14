@@ -2,344 +2,296 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const vk = @import("vk");
-const glfw = @import("glfw.zig");
+const Window = @import("window");
 
-const windowing = @import("./windowing.zig");
-const shader = @import("shader.zig");
+usingnamespace @import("./settings.zig");
 
-usingnamespace @import("./definitions.zig");
+const Self = @This();
 
-const BaseDispatch = struct {
-    vkCreateInstance: vk.PfnCreateInstance,
-    vkEnumerateInstanceLayerProperties: vk.PfnEnumerateInstanceLayerProperties,
+const BaseDispatch = vk.BaseWrapper(.{
+    .CreateInstance,
+});
 
-    usingnamespace vk.BaseWrapper(@This());
-};
+const InstanceDispatch = vk.InstanceWrapper(.{
+    .DestroyInstance,
+    .CreateDevice,
+    .DestroySurfaceKHR,
+    .EnumeratePhysicalDevices,
+    .GetPhysicalDeviceProperties,
+    .EnumerateDeviceExtensionProperties,
+    .GetPhysicalDeviceSurfaceFormatsKHR,
+    .GetPhysicalDeviceSurfacePresentModesKHR,
+    .GetPhysicalDeviceSurfaceCapabilitiesKHR,
+    .GetPhysicalDeviceQueueFamilyProperties,
+    .GetPhysicalDeviceSurfaceSupportKHR,
+    .GetPhysicalDeviceMemoryProperties,
+    .GetDeviceProcAddr,
+});
 
-const InstanceDispatch = struct {
-    vkDestroyInstance: vk.PfnDestroyInstance,
-    vkDestroySurfaceKHR: vk.PfnDestroySurfaceKHR,
+const DeviceDispatch = vk.DeviceWrapper(.{
+    .DestroyDevice,
+    .GetDeviceQueue,
+    .CreateSemaphore,
+    .CreateFence,
+    .CreateImageView,
+    .DestroyImageView,
+    .DestroySemaphore,
+    .DestroyFence,
+    .GetSwapchainImagesKHR,
+    .CreateSwapchainKHR,
+    .DestroySwapchainKHR,
+    .AcquireNextImageKHR,
+    .DeviceWaitIdle,
+    .WaitForFences,
+    .ResetFences,
+    .QueueSubmit,
+    .QueuePresentKHR,
+    .CreateCommandPool,
+    .DestroyCommandPool,
+    .AllocateCommandBuffers,
+    .FreeCommandBuffers,
+    .QueueWaitIdle,
+    .CreateShaderModule,
+    .DestroyShaderModule,
+    .CreatePipelineLayout,
+    .DestroyPipelineLayout,
+    .CreateRenderPass,
+    .DestroyRenderPass,
+    .CreateGraphicsPipelines,
+    .DestroyPipeline,
+    .CreateFramebuffer,
+    .DestroyFramebuffer,
+    .BeginCommandBuffer,
+    .EndCommandBuffer,
+    .AllocateMemory,
+    .FreeMemory,
+    .CreateBuffer,
+    .DestroyBuffer,
+    .GetBufferMemoryRequirements,
+    .MapMemory,
+    .UnmapMemory,
+    .BindBufferMemory,
+    .CmdBeginRenderPass,
+    .CmdEndRenderPass,
+    .CmdBindPipeline,
+    .CmdDraw,
+    .CmdSetViewport,
+    .CmdSetScissor,
+    .CmdBindVertexBuffers,
+    .CmdCopyBuffer,
+});
 
-    vkCreateDevice: vk.PfnCreateDevice,
+allocator: *Allocator,
+// arena is used for loading shader code
+arena: std.heap.ArenaAllocator,
 
-    vkEnumeratePhysicalDevices: vk.PfnEnumeratePhysicalDevices,
-    vkGetPhysicalDeviceProperties: vk.PfnGetPhysicalDeviceProperties,
-    vkGetPhysicalDeviceMemoryProperties: vk.PfnGetPhysicalDeviceMemoryProperties,
-    vkGetPhysicalDeviceFeatures: vk.PfnGetPhysicalDeviceFeatures,
-    vkEnumerateDeviceExtensionProperties: vk.PfnEnumerateDeviceExtensionProperties,
-    vkGetPhysicalDeviceSurfaceFormatsKHR: vk.PfnGetPhysicalDeviceSurfaceFormatsKHR,
-    vkGetPhysicalDeviceSurfacePresentModesKHR: vk.PfnGetPhysicalDeviceSurfacePresentModesKHR,
-    vkGetPhysicalDeviceQueueFamilyProperties: vk.PfnGetPhysicalDeviceQueueFamilyProperties,
-    vkGetPhysicalDeviceSurfaceSupportKHR: vk.PfnGetPhysicalDeviceSurfaceSupportKHR,
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR: vk.PfnGetPhysicalDeviceSurfaceCapabilitiesKHR,
+vkb: BaseDispatch,
+vki: InstanceDispatch,
+vkd: DeviceDispatch,
 
-    vkGetDeviceProcAddr: vk.PfnGetDeviceProcAddr,
+instance: vk.Instance,
+surface: vk.SurfaceKHR,
 
-    usingnamespace vk.InstanceWrapper(@This());
-};
+physical_device: vk.PhysicalDevice,
+properties: vk.PhysicalDeviceProperties,
+mem_properties: vk.PhysicalDeviceMemoryProperties,
+features: vk.PhysicalDeviceFeatures,
+device: vk.Device,
+graphics_queue: vk.Queue,
+present_queue: vk.Queue,
+transfer_queue: vk.Queue,
 
-const DeviceDispatch = struct {
-    vkDestroyDevice: vk.PfnDestroyDevice,
-    vkGetDeviceQueue: vk.PfnGetDeviceQueue,
-    vkDeviceWaitIdle: vk.PfnDeviceWaitIdle,
+window: *Window,
 
-    vkCreateSemaphore: vk.PfnCreateSemaphore,
-    vkDestroySemaphore: vk.PfnDestroySemaphore,
+graphics_pool: vk.CommandPool,
+transfer_pool: vk.CommandPool,
 
-    vkCreateFence: vk.PfnCreateFence,
-    vkDestroyFence: vk.PfnDestroyFence,
-    vkWaitForFences: vk.PfnWaitForFences,
-    vkResetFences: vk.PfnResetFences,
+indices: QueueFamilyIndices,
 
-    vkCreateImageView: vk.PfnCreateImageView,
-    vkDestroyImageView: vk.PfnDestroyImageView,
+pub fn init(allocator: *Allocator, window: *Window) !Self {
+    var self: Self = undefined;
+    self.allocator = allocator;
+    self.arena = std.heap.ArenaAllocator.init(allocator);
 
-    vkCreateSwapchainKHR: vk.PfnCreateSwapchainKHR,
-    vkDestroySwapchainKHR: vk.PfnDestroySwapchainKHR,
+    self.vkb = try BaseDispatch.load(window.GetInstanceProcAddress());
 
-    vkGetSwapchainImagesKHR: vk.PfnGetSwapchainImagesKHR,
-    vkAcquireNextImageKHR: vk.PfnAcquireNextImageKHR,
+    try self.createInstance();
+    self.vki = try InstanceDispatch.load(self.instance, window.GetInstanceProcAddress());
+    errdefer self.vki.destroyInstance(self.instance, null);
 
-    vkQueueSubmit: vk.PfnQueueSubmit,
-    vkQueuePresentKHR: vk.PfnQueuePresentKHR,
-    vkQueueWaitIdle: vk.PfnQueueWaitIdle,
+    try self.createSurface(self.instance, self.surface);
+    errdefer self.vki.destroySurfaceKHR(self.instance, self.surface, null);
 
-    vkCreateCommandPool: vk.PfnCreateCommandPool,
-    vkDestroyCommandPool: vk.PfnDestroyCommandPool,
-    vkResetCommandPool: vk.PfnResetCommandPool,
+    try self.pickPhysicalDevice();
+    self.indices = try findQueueFamilies(self.allocator, self.vki, self.physical_device, self.surface);
 
-    vkAllocateCommandBuffers: vk.PfnAllocateCommandBuffers,
-    vkFreeCommandBuffers: vk.PfnFreeCommandBuffers,
+    try self.createLogicalDevice();
+    self.vkd = try DeviceDispatch.load(self.device, self.vki.vkGetDeviceProcAddr);
+    errdefer self.vkd.destroyDevice(self.device, null);
 
-    vkCreateShaderModule: vk.PfnCreateShaderModule,
-    vkDestroyShaderModule: vk.PfnDestroyShaderModule,
+    self.graphics_queue = self.vkd.getDeviceQueue(self.device, self.indices.graphics_family.?, 0);
+    self.present_queue = self.vkd.getDeviceQueue(self.device, self.indices.present_family.?, 0);
+    self.transfer_queue = self.vkd.getDeviceQueue(self.device, self.indices.transfer_family.?, 0);
+    self.window = window;
 
-    vkCreatePipelineLayout: vk.PfnCreatePipelineLayout,
-    vkDestroyPipelineLayout: vk.PfnDestroyPipelineLayout,
+    try self.createGraphicsPool();
+    try self.createTransferPool();
 
-    vkCreateRenderPass: vk.PfnCreateRenderPass,
-    vkDestroyRenderPass: vk.PfnDestroyRenderPass,
+    return self;
+}
 
-    vkCreateGraphicsPipelines: vk.PfnCreateGraphicsPipelines,
-    vkDestroyPipeline: vk.PfnDestroyPipeline,
+pub fn deinit(self: Self) void {
+    self.vkd.destroyCommandPool(self.device, self.graphics_pool, null);
+    self.vkd.destroyCommandPool(self.device, self.transfer_pool, null);
 
-    vkCreateFramebuffer: vk.PfnCreateFramebuffer,
-    vkDestroyFramebuffer: vk.PfnDestroyFramebuffer,
+    self.vkd.destroyDevice(self.device, null);
+    self.vki.destroySurfaceKHR(self.instance, self.surface, null);
+    self.vki.destroyInstance(self.instance, null);
 
-    vkBeginCommandBuffer: vk.PfnBeginCommandBuffer,
-    vkEndCommandBuffer: vk.PfnEndCommandBuffer,
+    self.arena.deinit();
+}
 
-    vkAllocateMemory: vk.PfnAllocateMemory,
-    vkFreeMemory: vk.PfnFreeMemory,
-    vkMapMemory: vk.PfnMapMemory,
-    vkUnmapMemory: vk.PfnUnmapMemory,
+// Creates the vulkan instance
+fn createInstance(self: *Self) !void {
+    // Check validation layer support if enabled
+    if (enableValidationLayers and !(try checkValidationLayerSupport(self.vkb, self.allocator))) return BackendError.ValidationLayersNotAvailable;
 
-    vkCreateBuffer: vk.PfnCreateBuffer,
-    vkDestroyBuffer: vk.PfnDestroyBuffer,
-    vkGetBufferMemoryRequirements: vk.PfnGetBufferMemoryRequirements,
-    vkBindBufferMemory: vk.PfnBindBufferMemory,
+    const appInfo = vk.ApplicationInfo{
+        .p_application_name = app_name,
+        .application_version = vk.makeApiVersion(0, 0, 0, 0),
+        .p_engine_name = "zetaframe",
+        .engine_version = vk.makeApiVersion(0, 0, 0, 0),
+        .api_version = vk.API_VERSION_1_2,
+    };
 
-    vkCreateDescriptorSetLayout: vk.PfnCreateDescriptorSetLayout,
-    vkDestroyDescriptorSetLayout: vk.PfnDestroyDescriptorSetLayout,
+    // Get required vulkan extensions
+    var glfwExtensionCount: u32 = 0;
+    const glfwExtensions = self.window.GetRequiredInstanceExtensions(&glfwExtensionCount);
 
-    vkCmdBeginRenderPass: vk.PfnCmdBeginRenderPass,
-    vkCmdEndRenderPass: vk.PfnCmdEndRenderPass,
-    vkCmdBindPipeline: vk.PfnCmdBindPipeline,
-    vkCmdDrawIndexed: vk.PfnCmdDrawIndexed,
-    vkCmdSetViewport: vk.PfnCmdSetViewport,
-    vkCmdSetScissor: vk.PfnCmdSetScissor,
-    vkCmdBindVertexBuffers: vk.PfnCmdBindVertexBuffers,
-    vkCmdBindIndexBuffer: vk.PfnCmdBindIndexBuffer,
-    vkCmdCopyBuffer: vk.PfnCmdCopyBuffer,
+    // Call createInstance
+    self.instance = try self.vkb.createInstance(.{
+        .p_application_info = &appInfo,
+        .enabled_extension_count = glfwExtensionCount,
+        .pp_enabled_extension_names = @ptrCast([*]const [*:0]const u8, glfwExtensions),
+        .enabled_layer_count = if (enableValidationLayers) @intCast(u32, validationLayers.len) else 0,
+        .pp_enabled_layer_names = if (enableValidationLayers) &validationLayers else undefined,
 
-    usingnamespace vk.DeviceWrapper(@This());
-};
+        .flags = .{},
+    }, null);
+}
 
-pub const Context = struct {
-    const Self = @This();
-    allocator: *Allocator,
-    // arena is used for loading shader code
-    arena: std.heap.ArenaAllocator,
+// Chooses a physicalDevice based on a calculated device score
+fn pickPhysicalDevice(self: *Self) !void {
+    var deviceCount: u32 = 0;
+    _ = try self.vki.enumeratePhysicalDevices(self.instance, &deviceCount, null);
 
-    vkb: BaseDispatch,
-    vki: InstanceDispatch,
-    vkd: DeviceDispatch,
+    if (deviceCount == 0) return BackendError.NoValidDevices;
 
-    window: *windowing.Window,
+    const devices = try self.allocator.alloc(vk.PhysicalDevice, deviceCount);
+    defer self.allocator.free(devices);
 
-    instance: vk.Instance,
+    _ = try self.vki.enumeratePhysicalDevices(self.instance, &deviceCount, devices.ptr);
 
-    physical_device: vk.PhysicalDevice,
-    properties: vk.PhysicalDeviceProperties,
-    mem_properties: vk.PhysicalDeviceMemoryProperties,
-    features: vk.PhysicalDeviceFeatures,
+    var deviceSelected = false;
+    var selectedDevice: vk.PhysicalDevice = undefined;
+    var selectedDeviceScore: u32 = 0;
 
-    indices: QueueFamilyIndices,
-
-    device: vk.Device,
-    surface: vk.SurfaceKHR,
-
-    graphics_queue: vk.Queue,
-    present_queue: vk.Queue,
-    transfer_queue: vk.Queue,
-
-    graphics_pool: vk.CommandPool,
-    transfer_pool: vk.CommandPool,
-
-    pub fn init(allocator: *Allocator, window: *windowing.Window) !Self {
-        var self: Context = undefined;
-        self.allocator = allocator;
-        self.arena = std.heap.ArenaAllocator.init(allocator);
-        self.window = window;
-
-        self.vkb = try BaseDispatch.load(glfw.glfwGetInstanceProcAddress);
-
-        try self.createInstance();
-        self.vki = try InstanceDispatch.load(self.instance, glfw.glfwGetInstanceProcAddress);
-        errdefer self.vki.destroyInstance(self.instance, null);
-
-        try self.createSurface();
-        errdefer self.vki.destroySurfaceKHR(self.instance, self.surface, null);
-
-        try self.pickPhysicalDevice();
-        self.indices = try findQueueFamilies(self.allocator, self.vki, self.physical_device, self.surface);
-
-        try self.createLogicalDevice();
-        self.vkd = try DeviceDispatch.load(self.device, self.vki.vkGetDeviceProcAddr);
-        errdefer self.vkd.destroyDevice(self.device, null);
-
-        self.graphics_queue = self.vkd.getDeviceQueue(self.device, self.indices.graphics_family.?, 0);
-        self.present_queue = self.vkd.getDeviceQueue(self.device, self.indices.present_family.?, 0);
-        self.transfer_queue = self.vkd.getDeviceQueue(self.device, self.indices.transfer_family.?, 0);
-
-        try self.createGraphicsPool();
-        try self.createTransferPool();
-
-        return self;
-    }
-
-    pub fn deinit(self: Self) void {
-        self.vkd.destroyCommandPool(self.device, self.graphics_pool, null);
-        self.vkd.destroyCommandPool(self.device, self.transfer_pool, null);
-
-        self.vkd.destroyDevice(self.device, null);
-        self.vki.destroySurfaceKHR(self.instance, self.surface, null);
-        self.vki.destroyInstance(self.instance, null);
-
-        self.arena.deinit();
-    }
-
-    // Creates the vulkan instance
-    fn createInstance(self: *Self) !void {
-        // Check validation layer support if enabled
-        if (enableValidationLayers and !(try checkValidationLayerSupport(self.vkb, self.allocator))) return BackendError.ValidationLayersNotAvailable;
-
-        const appInfo = vk.ApplicationInfo{
-            .p_application_name = self.window.name,
-            .application_version = vk.makeVersion(0, 0, 0),
-            .p_engine_name = "zetaframe",
-            .engine_version = vk.makeVersion(0, 0, 0),
-            .api_version = vk.API_VERSION_1_1,
-        };
-
-        // Get required vulkan extensions
-        var glfwExtensionCount: u32 = 0;
-        const glfwExtensions = glfw.glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-        // Call createInstance
-        self.instance = try self.vkb.createInstance(.{
-            .p_application_info = &appInfo,
-            .enabled_extension_count = glfwExtensionCount,
-            .pp_enabled_extension_names = @ptrCast([*]const [*:0]const u8, glfwExtensions),
-            .enabled_layer_count = if (enableValidationLayers) @intCast(u32, validationLayers.len) else 0,
-            .pp_enabled_layer_names = if (enableValidationLayers) &validationLayers else undefined,
-
-            .flags = .{},
-        }, null);
-    }
-
-    // Creates a surface for vulkan to draw on
-    // Currently uses glfw
-    fn createSurface(self: *Self) !void {
-        if (glfw.glfwCreateWindowSurface(self.instance, self.window.window, null, &self.surface) != vk.Result.success) {
-            return BackendError.CreateSurfaceFailed;
+    for (devices) |device| {
+        var score = try calculateDeviceScore(self.allocator, self.vki, device, self.surface);
+        if (score > selectedDeviceScore and score != 0) {
+            deviceSelected = true;
+            selectedDeviceScore = score;
+            selectedDevice = device;
         }
     }
 
-    // Chooses a physicalDevice based on a calculated device score
-    fn pickPhysicalDevice(self: *Self) !void {
-        var deviceCount: u32 = 0;
-        _ = try self.vki.enumeratePhysicalDevices(self.instance, &deviceCount, null);
+    if (!deviceSelected) return BackendError.NoValidDevices;
 
-        if (deviceCount == 0) return BackendError.NoValidDevices;
+    self.physical_device = selectedDevice;
 
-        const devices = try self.allocator.alloc(vk.PhysicalDevice, deviceCount);
-        defer self.allocator.free(devices);
+    self.properties = self.vki.getPhysicalDeviceProperties(self.physical_device);
+    self.mem_properties = self.vki.getPhysicalDeviceMemoryProperties(self.physical_device);
+    self.features = self.vki.getPhysicalDeviceFeatures(self.physical_device);
 
-        _ = try self.vki.enumeratePhysicalDevices(self.instance, &deviceCount, devices.ptr);
+    std.log.info("Using Device: {}", .{self.properties.device_name});
+}
 
-        var deviceSelected = false;
-        var selectedDevice: vk.PhysicalDevice = undefined;
-        var selectedDeviceScore: u32 = 0;
+// Creates the device from the physicalDevice
+fn createLogicalDevice(self: *Self) !void {
+    var queueCreateInfos = std.ArrayList(vk.DeviceQueueCreateInfo).init(self.allocator);
+    defer queueCreateInfos.deinit();
 
-        for (devices) |device| {
-            var score = try calculateDeviceScore(self.allocator, self.vki, device, self.surface);
-            if (score > selectedDeviceScore and score != 0) {
-                deviceSelected = true;
-                selectedDeviceScore = score;
-                selectedDevice = device;
-            }
-        }
-
-        if (!deviceSelected) return BackendError.NoValidDevices;
-
-        self.physical_device = selectedDevice;
-
-        self.properties = self.vki.getPhysicalDeviceProperties(self.physical_device);
-        self.mem_properties = self.vki.getPhysicalDeviceMemoryProperties(self.physical_device);
-        self.features = self.vki.getPhysicalDeviceFeatures(self.physical_device);
-
-        std.log.info("Using Device: {}", .{self.properties.device_name});
-    }
-
-    // Creates the device from the physicalDevice
-    fn createLogicalDevice(self: *Self) !void {
-        var queueCreateInfos = std.ArrayList(vk.DeviceQueueCreateInfo).init(self.allocator);
-        defer queueCreateInfos.deinit();
-
-        var uniqueQueueFamilies: []u32 = undefined;
-        if (self.indices.graphics_family.? == self.indices.present_family.?) {
-            if (self.indices.graphics_family.? == self.indices.transfer_family.?) {
-                uniqueQueueFamilies = &[_]u32{self.indices.graphics_family.?};
-            } else {
-                uniqueQueueFamilies = &[_]u32{ self.indices.graphics_family.?, self.indices.transfer_family.? };
-            }
+    var uniqueQueueFamilies: []u32 = undefined;
+    if (self.indices.graphics_family.? == self.indices.present_family.?) {
+        if (self.indices.graphics_family.? == self.indices.transfer_family.?) {
+            uniqueQueueFamilies = &[_]u32{self.indices.graphics_family.?};
         } else {
-            if (self.indices.present_family.? == self.indices.transfer_family.?) {
-                uniqueQueueFamilies = &[_]u32{ self.indices.graphics_family.?, self.indices.present_family.? };
-            } else {
-                uniqueQueueFamilies = &[_]u32{ self.indices.graphics_family.?, self.indices.present_family.?, self.indices.transfer_family.? };
-            }
+            uniqueQueueFamilies = &[_]u32{ self.indices.graphics_family.?, self.indices.transfer_family.? };
         }
-
-        var queuePriority: f32 = 1.0;
-        for (uniqueQueueFamilies) |queueFamily| {
-            const queueCreateInfo = vk.DeviceQueueCreateInfo{
-                .queue_family_index = queueFamily,
-                .queue_count = 1,
-                .p_queue_priorities = &[_]f32{queuePriority},
-
-                .flags = .{},
-            };
-            try queueCreateInfos.append(queueCreateInfo);
+    } else {
+        if (self.indices.present_family.? == self.indices.transfer_family.?) {
+            uniqueQueueFamilies = &[_]u32{ self.indices.graphics_family.?, self.indices.present_family.? };
+        } else {
+            uniqueQueueFamilies = &[_]u32{ self.indices.graphics_family.?, self.indices.present_family.?, self.indices.transfer_family.? };
         }
+    }
 
-        const createInfo = vk.DeviceCreateInfo{
-            .queue_create_info_count = @intCast(u32, queueCreateInfos.items.len),
-            .p_queue_create_infos = queueCreateInfos.items.ptr,
-
-            .p_enabled_features = null,
-
-            .enabled_extension_count = @intCast(u32, deviceExtensions.len),
-            .pp_enabled_extension_names = &deviceExtensions,
-
-            .enabled_layer_count = if (enableValidationLayers) @intCast(u32, validationLayers.len) else 0,
-            .pp_enabled_layer_names = if (enableValidationLayers) &validationLayers else undefined,
+    var queuePriority: f32 = 1.0;
+    for (uniqueQueueFamilies) |queueFamily| {
+        const queueCreateInfo = vk.DeviceQueueCreateInfo{
+            .queue_family_index = queueFamily,
+            .queue_count = 1,
+            .p_queue_priorities = &[_]f32{queuePriority},
 
             .flags = .{},
         };
-
-        self.device = try self.vki.createDevice(self.physical_device, createInfo, null);
+        try queueCreateInfos.append(queueCreateInfo);
     }
 
-    fn createGraphicsPool(self: *Self) !void {
-        const indices = self.indices;
+    const createInfo = vk.DeviceCreateInfo{
+        .queue_create_info_count = @intCast(u32, queueCreateInfos.items.len),
+        .p_queue_create_infos = queueCreateInfos.items.ptr,
 
-        const poolInfo = vk.CommandPoolCreateInfo{
-            .queue_family_index = indices.graphics_family.?,
+        .p_enabled_features = null,
 
-            .flags = .{
-                .transient_bit = true,
-                .reset_command_buffer_bit = true,
-            },
-        };
+        .enabled_extension_count = @intCast(u32, deviceExtensions.len),
+        .pp_enabled_extension_names = &deviceExtensions,
 
-        self.graphics_pool = try self.vkd.createCommandPool(self.device, poolInfo, null);
-    }
+        .enabled_layer_count = if (enableValidationLayers) @intCast(u32, validationLayers.len) else 0,
+        .pp_enabled_layer_names = if (enableValidationLayers) &validationLayers else undefined,
 
-    fn createTransferPool(self: *Self) !void {
-        const indices = self.indices;
+        .flags = .{},
+    };
 
-        const poolInfo = vk.CommandPoolCreateInfo{
-            .queue_family_index = indices.transfer_family.?,
+    self.device = try self.vki.createDevice(self.physical_device, createInfo, null);
+}
 
-            .flags = .{},
-        };
+fn createGraphicsPool(self: *Self) !void {
+    const indices = self.indices;
 
-        self.transfer_pool = try self.vkd.createCommandPool(self.device, poolInfo, null);
-    }
-};
+    const poolInfo = vk.CommandPoolCreateInfo{
+        .queue_family_index = indices.graphics_family.?,
 
+        .flags = .{
+            .transient_bit = true,
+            .reset_command_buffer_bit = true,
+        },
+    };
+
+    self.graphics_pool = try self.vkd.createCommandPool(self.device, poolInfo, null);
+}
+
+fn createTransferPool(self: *Self) !void {
+    const indices = self.indices;
+
+    const poolInfo = vk.CommandPoolCreateInfo{
+        .queue_family_index = indices.transfer_family.?,
+
+        .flags = .{},
+    };
+
+    self.transfer_pool = try self.vkd.createCommandPool(self.device, poolInfo, null);
+}
 // Checks validation layer support
 fn checkValidationLayerSupport(vkb: BaseDispatch, allocator: *Allocator) !bool {
     var layerCount: u32 = 0;

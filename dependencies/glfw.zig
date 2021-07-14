@@ -1,4 +1,4 @@
-const vk = @import("vk.zig");
+const vk = @import("vk");
 
 pub extern fn glfwGetInstanceProcAddress(instance: vk.Instance, procname: [*:0]const u8) callconv(vk.vulkan_call_conv) vk.PfnVoidFunction;
 pub extern fn glfwGetPhysicalDevicePresentationSupport(instance: vk.Instance, pdev: vk.PhysicalDevice, queuefamily: u32) callconv(vk.vulkan_call_conv) c_int;

@@ -1,11 +1,13 @@
 const vk = @import("vk");
+const Context = @import("./context.zig");
 
 const Self = @This();
 
 surface: vk.SurfaceKHR,
+context: *Context,
 
 pub fn deinit(self: Self) void {
-    self.vki.destroySurfaceKHR(self.instance, self.surface, null);
+    self.vki.destroySurfaceKHR(self.context.instance, self.surface, null);
 }
 
 // Creates a surface for vulkan to draw on

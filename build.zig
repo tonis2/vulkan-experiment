@@ -21,11 +21,14 @@ pub fn build(b: *Builder) !void {
 
         exe.setTarget(target);
         exe.setBuildMode(mode);
-        
-        const vk = Pkg{ .name = "vk", .path = FileSource{ .path = "dependencies/vk.zig" } };
-        const glfw = Pkg{ .name = "glfw", .path = FileSource{ .path = "dependencies/glfw.zig" } };
-        const engine = Pkg{ .name = "engine", .path = FileSource{ .path = "src/engine.zig" }, .dependencies = .{ vk, glwf, Pkg{ .name = "zva", .path = FileSource{ .path = "dependencies/zva.zig" }, .dependencies = .{vk} } } };
 
+        const vk = Pkg{ .name = "vk", .path = FileSource{ .path = "./dependencies/vk.zig" } };
+        const glfw = Pkg{ .name = "glfw", .path = FileSource{ .path = "./dependencies/glfw.zig" }, .dependencies = &.{vk} };
+        const window = Pkg{ .name = "window", .path = FileSource{ .path = "./dependencies/window.zig" }, .dependencies = &.{ glfw, vk } };
+
+        const engine = Pkg{ .name = "engine", .path = FileSource{ .path = "src/engine.zig" }, .dependencies = &.{ window, vk, glfw, Pkg{ .name = "zva", .path = FileSource{ .path = "./dependencies/zva.zig" }, .dependencies = &.{vk} } } };
+
+        exe.addPackage(window);
         exe.addPackage(engine);
 
         exe.install();

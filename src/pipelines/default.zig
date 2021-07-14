@@ -1,5 +1,5 @@
 const std = @import("std");
-const Context = @import("./context.zig").Context;
+const Context = @import("../context.zig");
 const Allocator = std.mem.Allocator;
 const vk = @import("vk");
 
@@ -21,18 +21,19 @@ const attribute_description = [_]vk.VertexInputAttributeDescription{
         .binding = 0,
         .location = 0,
         .format = .r32g32_sfloat,
-        .offset = @byteOffsetOf(Vertex, "pos"),
+        .offset = @offsetOf(Vertex, "pos"),
     },
     .{
         .binding = 0,
         .location = 1,
         .format = .r32g32b32_sfloat,
-        .offset = @byteOffsetOf(Vertex, "color"),
+        .offset = @offsetOf(Vertex, "color"),
     },
 };
 
 layout: vk.PipelineLayout,
 pipeline: vk.Pipeline,
+context: *const Context,
 
 pub fn new(ctx: *const Context) Self {
     const pipeline_layout = try ctx.vkd.createPipelineLayout(ctx.dev, .{
@@ -43,29 +44,29 @@ pub fn new(ctx: *const Context) Self {
         .p_push_constant_ranges = undefined,
     }, null);
 
-    const VertexInfo = vk.PipelineVertexInputStateCreateInfo{
-        .flags = .{},
-        .vertex_binding_description_count = 1,
-        .p_vertex_binding_descriptions = @ptrCast([*]const vk.VertexInputBindingDescription, &binding_description),
-        .vertex_attribute_description_count = attribute_description.len,
-        .p_vertex_attribute_descriptions = &attribute_description,
-    };
+    // const VertexInfo = vk.PipelineVertexInputStateCreateInfo{
+    //     .flags = .{},
+    //     .vertex_binding_description_count = 1,
+    //     .p_vertex_binding_descriptions = @ptrCast([*]const vk.VertexInputBindingDescription, &binding_description),
+    //     .vertex_attribute_description_count = attribute_description.len,
+    //     .p_vertex_attribute_descriptions = &attribute_description,
+    // };
 
-    const vertModule = try ctx.vkd.createShaderModule(ctx.dev, .{
-        .flags = .{},
-        .code_size = resources.triangle_vert.len,
-        .p_code = @ptrCast([*]const u32, resources.triangle_vert),
-    }, null);
+    // const vertModule = try ctx.vkd.createShaderModule(ctx.dev, .{
+    //     .flags = .{},
+    //     .code_size = resources.triangle_vert.len,
+    //     .p_code = @ptrCast([*]const u32, resources.triangle_vert),
+    // }, null);
 
-    defer ctx.vkd.destroyShaderModule(ctx.dev, vert, null);
+    // defer ctx.vkd.destroyShaderModule(ctx.dev, vert, null);
 
-    const fragModule = try ctx.vkd.createShaderModule(ctx.dev, .{
-        .flags = .{},
-        .code_size = resources.triangle_frag.len,
-        .p_code = @ptrCast([*]const u32, resources.triangle_frag),
-    }, null);
+    // const fragModule = try ctx.vkd.createShaderModule(ctx.dev, .{
+    //     .flags = .{},
+    //     .code_size = resources.triangle_frag.len,
+    //     .p_code = @ptrCast([*]const u32, resources.triangle_frag),
+    // }, null);
 
-    defer ctx.vkd.destroyShaderModule(ctx.dev, frag, null);
+    // defer ctx.vkd.destroyShaderModule(ctx.dev, frag, null);
 
     const colorBlendState = vk.PipelineColorBlendStateCreateInfo{
         .flags = .{},
@@ -169,11 +170,11 @@ pub fn new(ctx: *const Context) Self {
     return Self{
         .pipeline = pipeline,
         .layout = layout,
-        .ctx = ctx,
+        .context = ctx,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    defer self.ctx.vkd.destroyPipelineLayout(self.ctx.dev, self.layout, null);
-    defer self.ctx.vkd.destroyPipeline(self.ctx.dev, self.pipeline, null);
+    defer self.context.vkd.destroyPipelineLayout(self.context.dev, self.layout, null);
+    defer self.context.vkd.destroyPipeline(self.context.dev, self.pipeline, null);
 }

@@ -2,9 +2,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const vk = @import("vk");
-
-const BackendError = @import("backend.zig").BackendError;
 const Context = @import("context.zig").Context;
+
+usingnamespace @import("./settings.zig");
 
 pub const Swapchain = struct {
     const Image = struct {
