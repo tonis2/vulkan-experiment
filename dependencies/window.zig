@@ -1,6 +1,4 @@
 const std = @import("std");
-const testing = std.testing;
-const panic = std.debug.panic;
 
 const glfw = @import("glfw");
 const vk = @import("vk");
@@ -22,7 +20,6 @@ name: [*c]const u8,
 size: Size,
 
 pub fn init(name: [*c]const u8, size: Size) !Self {
-    
     _ = glfw.glfwSetErrorCallback(errorCallback);
 
     if (glfw.glfwInit() == glfw.GLFW_FALSE) {
@@ -80,7 +77,7 @@ pub fn update() void {
 //----- All Backends
 fn errorCallback(err: c_int, description: [*c]const u8) callconv(.C) void {
     std.debug.print("{d} \n", .{err});
-    panic("Error: {s} \n", .{std.mem.span(description)});
+    std.debug.panic("Error: {s} \n", .{std.mem.span(description)});
 }
 
 // //----- Vulkan Specific

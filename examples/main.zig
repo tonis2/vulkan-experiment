@@ -10,6 +10,8 @@ pub fn main() !void {
     defer std.debug.assert(!gpa.deinit());
 
     const window = try glfWindow.init("test", .{ .width = 400, .height = 500 });
+    defer window.deinit();
+    
     const vkEngine = try engine.init(allocator, &window);
 
     std.debug.print("Using device: {s} \n", .{vkEngine.context.deviceName()});

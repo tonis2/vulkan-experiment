@@ -2,7 +2,6 @@ const Builder = @import("std").build.Builder;
 const std = @import("std");
 
 const fmt = std.fmt;
-const print = std.debug.print;
 const Pkg = std.build.Pkg;
 const FileSource = std.build.FileSource;
 
@@ -30,8 +29,9 @@ pub fn build(b: *Builder) !void {
 
         exe.addPackage(window);
         exe.addPackage(engine);
-        exe.linkSystemLibrary("glfw");
 
+        exe.linkLibC();
+        exe.linkSystemLibrary("glfw");
         exe.install();
 
         const run_cmd = exe.run();

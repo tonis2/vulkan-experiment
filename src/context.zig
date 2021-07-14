@@ -343,7 +343,7 @@ fn calculateDeviceScore(allocator: *Allocator, vki: InstanceDispatch, pdevice: v
     if (!try checkDeviceExtensionSupport(allocator, vki, pdevice)) return 0;
     if (!try checkSwapchainSupport(vki, pdevice, surface)) return 0;
 
-    std.log.debug("Device: {d}, Type: {d}, Score: {d}", .{ deviceProperties.device_name, deviceProperties.device_type, score });
+    std.log.debug("Device: {s}, Type: {d}, Score: {d}", .{ deviceProperties.device_name, deviceProperties.device_type, score });
 
     return score;
 }
