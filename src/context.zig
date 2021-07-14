@@ -1,6 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+const glfw = @import("glfw");
+
 const vk = @import("vk");
 const Window = @import("window");
 
@@ -95,38 +97,39 @@ surface: vk.SurfaceKHR,
 physical_device: vk.PhysicalDevice,
 properties: vk.PhysicalDeviceProperties,
 mem_properties: vk.PhysicalDeviceMemoryProperties,
-features: vk.PhysicalDeviceFeatures,
+
 device: vk.Device,
 graphics_queue: vk.Queue,
 present_queue: vk.Queue,
 transfer_queue: vk.Queue,
 
-window: *Window,
+window: *const Window,
 
 graphics_pool: vk.CommandPool,
 transfer_pool: vk.CommandPool,
 
 indices: QueueFamilyIndices,
 
-pub fn init(allocator: *Allocator, window: *Window) !Self {
+pub fn init(allocator: *Allocator, window: *const Window) !Self {
     var self: Self = undefined;
     self.allocator = allocator;
     self.arena = std.heap.ArenaAllocator.init(allocator);
 
-    self.vkb = try BaseDispatch.load(window.GetInstanceProcAddress());
+    self.vkb = try BaseDispatch.load(glfw.glfwGetInstanceProcAddress);
 
     try self.createInstance();
-    self.vki = try InstanceDispatch.load(self.instance, window.GetInstanceProcAddress());
+    self.vki = try InstanceDispatch.load(self.instance, glfw.glfwGetInstanceProcAddress);
     errdefer self.vki.destroyInstance(self.instance, null);
 
-    try self.createSurface(self.instance, self.surface);
+    self.surface = try window.createSurface(self.instance);
     errdefer self.vki.destroySurfaceKHR(self.instance, self.surface, null);
 
     try self.pickPhysicalDevice();
     self.indices = try findQueueFamilies(self.allocator, self.vki, self.physical_device, self.surface);
 
     try self.createLogicalDevice();
-    self.vkd = try DeviceDispatch.load(self.device, self.vki.vkGetDeviceProcAddr);
+
+    self.vkd = try DeviceDispatch.load(self.device, self.vki.dispatch.vkGetDeviceProcAddr);
     errdefer self.vkd.destroyDevice(self.device, null);
 
     self.graphics_queue = self.vkd.getDeviceQueue(self.device, self.indices.graphics_family.?, 0);
@@ -154,7 +157,7 @@ pub fn deinit(self: Self) void {
 // Creates the vulkan instance
 fn createInstance(self: *Self) !void {
     // Check validation layer support if enabled
-    if (enableValidationLayers and !(try checkValidationLayerSupport(self.vkb, self.allocator))) return BackendError.ValidationLayersNotAvailable;
+    // if (enableValidationLayers and !(try checkValidationLayerSupport(self.vkb, self.allocator))) return BackendError.ValidationLayersNotAvailable;
 
     const appInfo = vk.ApplicationInfo{
         .p_application_name = app_name,
@@ -166,7 +169,7 @@ fn createInstance(self: *Self) !void {
 
     // Get required vulkan extensions
     var glfwExtensionCount: u32 = 0;
-    const glfwExtensions = self.window.GetRequiredInstanceExtensions(&glfwExtensionCount);
+    const glfwExtensions = glfw.glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
     // Call createInstance
     self.instance = try self.vkb.createInstance(.{
@@ -211,9 +214,11 @@ fn pickPhysicalDevice(self: *Self) !void {
 
     self.properties = self.vki.getPhysicalDeviceProperties(self.physical_device);
     self.mem_properties = self.vki.getPhysicalDeviceMemoryProperties(self.physical_device);
-    self.features = self.vki.getPhysicalDeviceFeatures(self.physical_device);
+}
 
-    std.log.info("Using Device: {}", .{self.properties.device_name});
+pub fn deviceName(self: Self) []const u8 {
+    const len = std.mem.indexOfScalar(u8, &self.properties.device_name, 0).?;
+    return self.properties.device_name[0..len];
 }
 
 // Creates the device from the physicalDevice
@@ -324,7 +329,6 @@ fn checkValidationLayerSupport(vkb: BaseDispatch, allocator: *Allocator) !bool {
 fn calculateDeviceScore(allocator: *Allocator, vki: InstanceDispatch, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !u32 {
     var deviceProperties = vki.getPhysicalDeviceProperties(pdevice);
     var deviceMemProperties = vki.getPhysicalDeviceMemoryProperties(pdevice);
-    var deviceFeatures = vki.getPhysicalDeviceFeatures(pdevice);
 
     var score: u32 = 0;
 
@@ -335,13 +339,11 @@ fn calculateDeviceScore(allocator: *Allocator, vki: InstanceDispatch, pdevice: v
     score += @intCast(u32, deviceProperties.limits.max_image_dimension_2d);
     score += @intCast(u32, deviceMemProperties.memory_heap_count);
 
-    //----- Must Haves
-    if (deviceFeatures.geometry_shader == 0) return 0;
     if (!(try findQueueFamilies(allocator, vki, pdevice, surface)).isComplete()) return 0;
     if (!try checkDeviceExtensionSupport(allocator, vki, pdevice)) return 0;
     if (!try checkSwapchainSupport(vki, pdevice, surface)) return 0;
 
-    std.log.debug("Device: {}, Type: {}, Score: {}", .{ deviceProperties.device_name, deviceProperties.device_type, score });
+    std.log.debug("Device: {d}, Type: {d}, Score: {d}", .{ deviceProperties.device_name, deviceProperties.device_type, score });
 
     return score;
 }

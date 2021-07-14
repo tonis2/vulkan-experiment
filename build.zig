@@ -30,6 +30,7 @@ pub fn build(b: *Builder) !void {
 
         exe.addPackage(window);
         exe.addPackage(engine);
+        exe.linkSystemLibrary("glfw");
 
         exe.install();
 
