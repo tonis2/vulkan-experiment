@@ -15,6 +15,8 @@ pub const Size = struct {
     height: u32,
 };
 
+pub const instantProcAdress: [*c]const u8 = glfw.glfwGetInstanceProcAddress();
+
 window: *glfw.GLFWwindow,
 name: [*c]const u8,
 size: Size,
