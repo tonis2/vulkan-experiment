@@ -13,9 +13,16 @@ pub const WindowError = error{
 pub const Size = struct {
     width: u32,
     height: u32,
+
+    pub fn Extent(self: Size) vk.Extent2D {
+        return vk.Extent2D{
+            .width = self.width,
+            .height = self.height,
+        };
+    }
 };
 
-pub const instantProcAdress: [*c]const u8 = glfw.glfwGetInstanceProcAddress();
+// pub const instantProcAdress: [*c]const u8 = glfw.glfwGetInstanceProcAddress;
 
 window: *glfw.GLFWwindow,
 name: [*c]const u8,
@@ -53,11 +60,6 @@ pub fn createSurface(self: Self, instance: vk.Instance) !vk.SurfaceKHR {
 
     return surface;
 }
-
-// pub fn getInstanceProcAddress(self: Self) vk.PfnVoidFunction {
-//     _ = self;
-//     return glfw.glfwGetInstanceProcAddress();
-// }
 
 // pub fn getRequiredInstanceExtensions(count: *i32) !void {
 //     glfw.glfwGetRequiredInstanceExtensions(count);

@@ -80,12 +80,12 @@ pub fn recreate(self: *Self) !void {
     try self.createImages();
 }
 
-fn deinitNoSwapchain(self: *Self) void {
+fn deinitNoSwapchain(self: Self) void {
     for (self.images) |image| image.deinit();
     self.allocator.free(self.images);
 }
 
-pub fn deinit(self: *Self) void {
+pub fn deinit(self: Self) void {
     self.deinitNoSwapchain();
 
     self.context.vkd.destroySwapchainKHR(self.context.device, self.swapchain, null);

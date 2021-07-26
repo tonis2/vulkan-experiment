@@ -17,8 +17,7 @@ swapchain: Swapchain,
 
 pub fn init(allocator: *Allocator, window: *const Window) !Self {
     var context = try Context.init(allocator, window);
-    var swapchain = try Swapchain.init(&context, allocator, .{ .width = 800, .height = 600 });
-    defer swapchain.deinit();
+    var swapchain = try Swapchain.init(&context, allocator, window.size.Extent());
 
     // var pipeline = Pipeline.new(&context);
     // defer pipeline.deinit();
@@ -30,5 +29,6 @@ pub fn init(allocator: *Allocator, window: *const Window) !Self {
 }
 
 pub fn deinit(self: Self) void {
+    self.swapchain.deinit();
     self.context.deinit();
 }
