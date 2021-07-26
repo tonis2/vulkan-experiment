@@ -6,7 +6,7 @@ const Allocator = std.mem.Allocator;
 const Context = @import("./context.zig");
 const Swapchain = @import("./swapchain.zig");
 const Window = @import("window");
-const Pipeline = @import("./pipelines/default.zig");
+
 
 usingnamespace @import("./settings.zig");
 
@@ -19,8 +19,7 @@ pub fn init(allocator: *Allocator, window: *const Window) !Self {
     var context = try Context.init(allocator, window);
     var swapchain = try Swapchain.init(&context, allocator, window.size.Extent());
 
-    // var pipeline = Pipeline.new(&context);
-    // defer pipeline.deinit();
+   
 
     return Self{
         .context = context,
