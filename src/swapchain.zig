@@ -7,12 +7,12 @@ const Context = @import("context.zig");
 usingnamespace @import("./settings.zig");
 
 pub const Image = struct {
-    context: *const Context,
+    context: Context,
 
     image: vk.Image,
     view: vk.ImageView,
 
-    fn init(context: *const Context, image: vk.Image, format: vk.Format) !Image {
+    fn init(context: Context, image: vk.Image, format: vk.Format) !Image {
         const view = try context.vkd.createImageView(context.device, .{
             .image = image,
             .view_type = .@"2d",
@@ -54,7 +54,7 @@ allocator: *Allocator,
 
 swapchain: vk.SwapchainKHR,
 
-context: *const Context,
+context: Context,
 actualExtent: vk.Extent2D,
 
 images: []Image,
@@ -63,7 +63,7 @@ present_mode: vk.PresentModeKHR,
 image_format: vk.Format,
 extent: vk.Extent2D,
 
-pub fn init(context: *const Context, allocator: *Allocator, extent: vk.Extent2D) !Self {
+pub fn init(context: Context, allocator: *Allocator, extent: vk.Extent2D) !Self {
     var self: Self = undefined;
     self.allocator = allocator;
     self.context = context;

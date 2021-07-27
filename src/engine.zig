@@ -3,8 +3,10 @@ const vk = @import("vk");
 
 const Allocator = std.mem.Allocator;
 
-const Context = @import("./context.zig");
-const Swapchain = @import("./swapchain.zig");
+pub const Context = @import("./context.zig");
+pub const Swapchain = @import("./swapchain.zig");
+pub const Shader = @import("./shader.zig");
+
 const Window = @import("window");
 
 
@@ -15,11 +17,10 @@ const Self = @This();
 context: Context,
 swapchain: Swapchain,
 
-pub fn init(allocator: *Allocator, window: *const Window) !Self {
+pub fn init(allocator: *Allocator, window: *Window) !Self {
     var context = try Context.init(allocator, window);
-    var swapchain = try Swapchain.init(&context, allocator, window.size.Extent());
+    var swapchain = try Swapchain.init(context, allocator, window.size.Extent());
 
-   
 
     return Self{
         .context = context,

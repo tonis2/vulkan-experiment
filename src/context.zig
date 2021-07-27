@@ -110,7 +110,7 @@ transfer_pool: vk.CommandPool,
 
 indices: QueueFamilyIndices,
 
-pub fn init(allocator: *Allocator, window: *const Window) !Self {
+pub fn init(allocator: *Allocator, window: *Window) !Self {
     var self: Self = undefined;
     self.allocator = allocator;
     self.arena = std.heap.ArenaAllocator.init(allocator);
