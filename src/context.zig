@@ -84,8 +84,6 @@ const DeviceDispatch = vk.DeviceWrapper(.{
 });
 
 allocator: *Allocator,
-// arena is used for loading shader code
-arena: std.heap.ArenaAllocator,
 
 vkb: BaseDispatch,
 vki: InstanceDispatch,
@@ -103,17 +101,16 @@ graphics_queue: vk.Queue,
 present_queue: vk.Queue,
 transfer_queue: vk.Queue,
 
-window: *const Window,
+window: Window,
 
 graphics_pool: vk.CommandPool,
 transfer_pool: vk.CommandPool,
 
 indices: QueueFamilyIndices,
 
-pub fn init(allocator: *Allocator, window: *Window) !Self {
+pub fn init(allocator: *Allocator, window: Window) !Self {
     var self: Self = undefined;
     self.allocator = allocator;
-    self.arena = std.heap.ArenaAllocator.init(allocator);
 
     self.vkb = try BaseDispatch.load(glfw.glfwGetInstanceProcAddress);
 
@@ -150,8 +147,6 @@ pub fn deinit(self: Self) void {
     self.vkd.destroyDevice(self.device, null);
     self.vki.destroySurfaceKHR(self.instance, self.surface, null);
     self.vki.destroyInstance(self.instance, null);
-
-    self.arena.deinit();
 }
 
 // Creates the vulkan instance

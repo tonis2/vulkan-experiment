@@ -1,6 +1,4 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
-
 const vk = @import("vk");
 const Context = @import("context.zig");
 
@@ -50,10 +48,9 @@ pub const Image = struct {
 };
 
 const Self = @This();
-allocator: *Allocator,
 
 swapchain: vk.SwapchainKHR,
-
+allocator: *std.mem.Allocator,
 context: Context,
 actualExtent: vk.Extent2D,
 
@@ -63,9 +60,9 @@ present_mode: vk.PresentModeKHR,
 image_format: vk.Format,
 extent: vk.Extent2D,
 
-pub fn init(context: Context, allocator: *Allocator, extent: vk.Extent2D) !Self {
+pub fn init(context: Context, extent: vk.Extent2D) !Self {
     var self: Self = undefined;
-    self.allocator = allocator;
+    self.allocator = context.allocator;
     self.context = context;
     self.actualExtent = extent;
 

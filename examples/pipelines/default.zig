@@ -4,9 +4,9 @@ const vk = @import("vk");
 
 const Context = engine.Context;
 const Shader = engine.Shader;
-const Allocator = std.mem.Allocator;
-
 const Self = @This();
+
+const Renderpass = @import("../renderpass/default.zig");
 
 pub const Vertex = struct {
     pos: [2]f32,
@@ -37,8 +37,10 @@ pub const Vertex = struct {
 layout: vk.PipelineLayout,
 pipeline: vk.Pipeline,
 context: Context,
+fragment: Shader,
+vertex: Shader,
 
-pub fn new(ctx: Context) !Self {
+pub fn new(ctx: Context, renderpass: Renderpass) !Self {
     const pipeline_layout = try ctx.vkd.createPipelineLayout(ctx.device, .{
         .flags = .{},
         .set_layout_count = 0,
@@ -47,26 +49,21 @@ pub fn new(ctx: Context) !Self {
         .p_push_constant_ranges = undefined,
     }, null);
 
-    const vert = try Shader.init("/shaders/triangle.vert");
-    const frag = try Shader.init("/shaders/triangle.frag");
-    
-    defer {
-        vert.deinit();
-        frag.deinit();
-    }
+    const vert = try Shader.load("./shaders/triangle.vert", ctx);
+    const frag = try Shader.load("./shaders/triangle.frag", ctx);
 
     const shaderStages = [_]vk.PipelineShaderStageCreateInfo{
         .{
             .flags = .{},
             .stage = .{ .vertex_bit = true },
-            .module = vert,
+            .module = vert.module,
             .p_name = "main",
             .p_specialization_info = null,
         },
         .{
             .flags = .{},
             .stage = .{ .fragment_bit = true },
-            .module = frag,
+            .module = frag.module,
             .p_name = "main",
             .p_specialization_info = null,
         },
@@ -96,7 +93,7 @@ pub fn new(ctx: Context) !Self {
         .flags = .{},
         .stage_count = 2,
         .p_stages = &shaderStages,
-        .p_vertex_input_state = vk.PipelineVertexInputStateCreateInfo{
+        .p_vertex_input_state = &vk.PipelineVertexInputStateCreateInfo{
             .flags = .{},
             .vertex_binding_description_count = 1,
             .p_vertex_binding_descriptions = @ptrCast([*]const vk.VertexInputBindingDescription, &Vertex.binding_description),
@@ -146,7 +143,7 @@ pub fn new(ctx: Context) !Self {
             .p_dynamic_states = &dynstate,
         },
         .layout = pipeline_layout,
-        .render_pass = render_pass,
+        .render_pass = renderpass.pass,
         .subpass = 0,
         .base_pipeline_handle = .null_handle,
         .base_pipeline_index = -1,
@@ -164,12 +161,16 @@ pub fn new(ctx: Context) !Self {
 
     return Self{
         .pipeline = pipeline,
-        .layout = layout,
+        .layout = pipeline_layout,
         .context = ctx,
+        .fragment = frag,
+        .vertex = vert,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    defer self.context.vkd.destroyPipelineLayout(self.context.device, self.layout, null);
-    defer self.context.vkd.destroyPipeline(self.context.device, self.pipeline, null);
+    self.vertex.deinit();
+    self.fragment.deinit();
+    self.context.vkd.destroyPipelineLayout(self.context.device, self.layout, null);
+    self.context.vkd.destroyPipeline(self.context.device, self.pipeline, null);
 }
