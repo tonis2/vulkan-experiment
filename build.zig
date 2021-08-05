@@ -1,43 +1,32 @@
-const Builder = @import("std").build.Builder;
 const std = @import("std");
+const Builder = std.build.Builder;
+const LibExeObjStep = std.build.LibExeObjStep;
 
-const fmt = std.fmt;
-const Pkg = std.build.Pkg;
-const FileSource = std.build.FileSource;
-
-pub fn build(b: *Builder) !void {
+pub fn build(b: *Builder) void {
+    // Standard target options allows the person running `zig build` to choose
+    // what target to build for. Here we do not override the defaults, which
+    // means any target is allowed, and the default is native. Other options
+    // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
+
+    // Standard release options allow the person running `zig build` to select
+    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
-    const examples = [_][2][]const u8{
-        .{ "main", "examples/main.zig" },
-    };
+    const exe = b.addExecutable("zig-vulkan", "src/main.zig");
+    exe.setTarget(target);
+    exe.setBuildMode(mode);
+    exe.linkLibC();
+    exe.linkSystemLibrary("glfw");
+    exe.linkSystemLibrary("vulkan");
+    exe.install();
 
-    for (examples) |example| {
-        const name = example[0];
-        const path = example[1];
-        const exe = b.addExecutable(name, path);
-
-        exe.setTarget(target);
-        exe.setBuildMode(mode);
-
-        const vk = Pkg{ .name = "vk", .path = FileSource{ .path = "./dependencies/vk.zig" } };
-        const glfw = Pkg{ .name = "glfw", .path = FileSource{ .path = "./dependencies/glfw.zig" }, .dependencies = &.{vk} };
-        const window = Pkg{ .name = "window", .path = FileSource{ .path = "./dependencies/window.zig" }, .dependencies = &.{ glfw, vk } };
-        const engine = Pkg{ .name = "engine", .path = FileSource{ .path = "src/engine.zig" }, .dependencies = &.{ window, vk, glfw, Pkg{ .name = "zva", .path = FileSource{ .path = "./dependencies/zva.zig" }, .dependencies = &.{vk} } } };
-
-        exe.addPackage(window);
-        exe.addPackage(engine);
-        exe.addPackage(vk);
-
-        exe.linkLibC();
-        exe.linkSystemLibrary("glfw");
-        exe.install();
-
-        const run_cmd = exe.run();
-        run_cmd.step.dependOn(b.getInstallStep());
-
-        const run_step = b.step(name, "Run the app");
-        run_step.dependOn(&run_cmd.step);
+    const run_cmd = exe.run();
+    run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
     }
+
+    const run_step = b.step("run", "Run the app");
+    run_step.dependOn(&run_cmd.step);
 }
