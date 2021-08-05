@@ -15,6 +15,28 @@ usingnamespace @import("window.zig");
 
 pub const log_level: std.log.Level = .warn;
 
+pub const Vec2 = struct {
+    x: f32,
+    y: f32,
+
+    pub fn new(x: f32, y: f32) Vec2 {
+        return Vec2{
+            .x = x,
+            .y = y,
+        };
+    }
+};
+
+pub const Vec3 = struct {
+    x: f32,
+    y: f32,
+    z: f32,
+
+    pub fn new(x: f32, y: f32, z: f32) Vec3 {
+        return Vec3{ .x = x, .y = y, .z = z };
+    }
+};
+
 const MAX_FRAMES_IN_FLIGHT = 2;
 const MAX_UINT64 = @as(c_ulong, 18446744073709551615); // Couldn't use UINT64_MAX for some reason
 
