@@ -5,6 +5,7 @@ usingnamespace @import("c.zig");
 usingnamespace @import("utils.zig");
 
 const vk = @import("vulkan.zig");
+const Context = @import("context.zig");
 
 pub const VertexBuffer = Buffer(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 pub const IndexBuffer = Buffer(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
@@ -18,10 +19,7 @@ fn Buffer(comptime T: type, usage: c_int) type {
         len: usize,
 
         pub fn init(
-            physical_device: VkPhysicalDevice,
-            device: VkDevice,
-            graphics_queue: VkQueue,
-            command_pool: VkCommandPool,
+            ctx: Context,
             content: []const T,
         ) !Self {
             const buffer_size = @sizeOf(T) * content.len;
@@ -29,8 +27,8 @@ fn Buffer(comptime T: type, usage: c_int) type {
             var staging_buffer: VkBuffer = undefined;
             var staging_memory: VkDeviceMemory = undefined;
             try createBuffer(
-                physical_device,
-                device,
+                ctx.vulkan.physical_device,
+                ctx.vulkan.device,
                 buffer_size,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -38,21 +36,21 @@ fn Buffer(comptime T: type, usage: c_int) type {
                 &staging_memory,
             );
             defer {
-                vkDestroyBuffer(device, staging_buffer, null);
-                vkFreeMemory(device, staging_memory, null);
+                vkDestroyBuffer(ctx.vulkan.device, staging_buffer, null);
+                vkFreeMemory(ctx.vulkan.device, staging_memory, null);
             }
 
             var data: ?*c_void = undefined;
-            try checkSuccess(vkMapMemory(device, staging_memory, 0, buffer_size, 0, &data), error.VulkanMapMemoryError);
+            try checkSuccess(vkMapMemory(ctx.vulkan.device, staging_memory, 0, buffer_size, 0, &data), error.VulkanMapMemoryError);
             const bytes = @ptrCast([*]const u8, @alignCast(@alignOf(T), std.mem.sliceAsBytes(content)));
             @memcpy(@ptrCast([*]u8, data), bytes, buffer_size);
-            vkUnmapMemory(device, staging_memory);
+            vkUnmapMemory(ctx.vulkan.device, staging_memory);
 
             var buffer: VkBuffer = undefined;
             var memory: VkDeviceMemory = undefined;
             try createBuffer(
-                physical_device,
-                device,
+                ctx.vulkan.physical_device,
+                ctx.vulkan.device,
                 buffer_size,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -60,11 +58,11 @@ fn Buffer(comptime T: type, usage: c_int) type {
                 &memory,
             );
             errdefer {
-                vkDestroyBuffer(device, buffer, null);
-                vkFreeMemory(device, memory, null);
+                vkDestroyBuffer(ctx.vulkan.device, buffer, null);
+                vkFreeMemory(ctx.vulkan.device, memory, null);
             }
 
-            try copyBuffer(device, graphics_queue, command_pool, staging_buffer, buffer, buffer_size);
+            try copyBuffer(ctx.vulkan.device, ctx.vulkan.graphics_queue, ctx.vulkan.command_pool, staging_buffer, buffer, buffer_size);
 
             return Self{
                 .buffer = buffer,
@@ -145,7 +143,7 @@ fn findMemoryType(physical_device: VkPhysicalDevice, type_filter: u32, propertie
     return error.VulkanSuitableMemoryTypeNotFound;
 }
 
-fn createBuffer(
+pub fn createBuffer(
     physical_device: VkPhysicalDevice,
     device: VkDevice,
     size: VkDeviceSize,
@@ -188,67 +186,3 @@ fn createBuffer(
     try checkSuccess(vkBindBufferMemory(device, buffer.*, buffer_memory.*, 0), error.VulkanBindBufferMemoryFailure);
 }
 
-pub fn createCommandBuffers(
-    allocator: *Allocator,
-    device: VkDevice,
-    render_pass: VkRenderPass,
-    command_pool: VkCommandPool,
-    framebuffers: []VkFramebuffer,
-    swap_chain_extent: VkExtent2D,
-    graphics_pipeline: VkPipeline,
-    vertex_buffer: VertexBuffer,
-    index_buffer: IndexBuffer,
-) ![]VkCommandBuffer {
-    var buffers = try allocator.alloc(VkCommandBuffer, framebuffers.len);
-    errdefer allocator.free(buffers);
-
-    const alloc_info = VkCommandBufferAllocateInfo{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext = null,
-        .commandPool = command_pool,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = @intCast(u32, buffers.len),
-    };
-
-    try vk.allocateCommandBuffers(device, &alloc_info, buffers.ptr);
-
-    for (buffers) |buffer, i| {
-        const begin_info = VkCommandBufferBeginInfo{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .pNext = null,
-            .flags = 0,
-            .pInheritanceInfo = null,
-        };
-        try vk.beginCommandBuffer(buffer, &begin_info);
-
-        const clear_color = [_]VkClearValue{VkClearValue{
-            .color = VkClearColorValue{ .float32 = [_]f32{ 0.0, 0.0, 0.0, 1.0 } },
-        }};
-        const render_pass_info = VkRenderPassBeginInfo{
-            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .pNext = null,
-            .renderPass = render_pass,
-            .framebuffer = framebuffers[i],
-            .renderArea = VkRect2D{
-                .offset = VkOffset2D{ .x = 0, .y = 0 },
-                .extent = swap_chain_extent,
-            },
-            .clearValueCount = 1,
-            .pClearValues = &clear_color,
-        };
-
-        vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-
-        const vertex_buffers = [_]VkBuffer{vertex_buffer.buffer};
-        const offsets = [_]VkDeviceSize{0};
-        vkCmdBindVertexBuffers(buffer, 0, 1, &vertex_buffers, &offsets);
-        vkCmdBindIndexBuffer(buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
-        vkCmdDrawIndexed(buffer, @intCast(u32, index_buffer.len), 1, 0, 0, 0);
-        vkCmdEndRenderPass(buffer);
-
-        try vk.endCommandBuffer(buffer);
-    }
-
-    return buffers;
-}

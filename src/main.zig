@@ -33,17 +33,11 @@ pub fn main() !void {
     var context = try Context.init(allocator);
     defer context.deinit();
 
-    const pipeline = try Pipeline.init(context.vulkan.device, context.vulkan.render_pass, context.vulkan.swap_chain.extent);
-    const vertex_buffer = try VertexBuffer.init(context.vulkan.physical_device, context.vulkan.device, context.vulkan.graphics_queue, context.vulkan.command_pool, &vertices);
-    const index_buffer = try IndexBuffer.init(context.vulkan.physical_device, context.vulkan.device, context.vulkan.graphics_queue, context.vulkan.command_pool, &v_indices);
+    const pipeline = try Pipeline.init(context);
+    const vertex_buffer = try VertexBuffer.init(context, &vertices);
+    const index_buffer = try IndexBuffer.init(context, &v_indices);
 
-    const command_buffers = try createCommandBuffers(
-        allocator,
-        context.vulkan.device,
-        context.vulkan.render_pass,
-        context.vulkan.command_pool,
-        context.vulkan.swap_chain_framebuffers,
-        context.vulkan.swap_chain.extent,
+    const command_buffers = try context.vulkan.createCommandBuffers(
         pipeline.pipeline,
         vertex_buffer,
         index_buffer,

@@ -13,8 +13,7 @@ usingnamespace @import("c.zig");
 usingnamespace @import("utils.zig");
 usingnamespace @import("buffer.zig");
 
-
- // Couldn't use UINT64_MAX for some reason
+// Couldn't use UINT64_MAX for some reason
 
 const enable_validation_layers = std.debug.runtime_safety;
 
@@ -176,6 +175,66 @@ fn cleanUpSwapChain(self: Self) void {
 
     vkDestroyRenderPass(self.device, self.render_pass, null);
     self.swap_chain.deinit(self.device);
+}
+
+pub fn createCommandBuffers(
+    self: Self,
+    graphics_pipeline: VkPipeline,
+    vertex_buffer: VertexBuffer,
+    index_buffer: IndexBuffer,
+) ![]VkCommandBuffer {
+    var buffers = try self.allocator.alloc(VkCommandBuffer, self.swap_chain_framebuffers.len);
+    errdefer self.allocator.free(buffers);
+
+    const alloc_info = VkCommandBufferAllocateInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = null,
+        .commandPool = self.command_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = @intCast(u32, buffers.len),
+    };
+
+    try allocateCommandBuffers(self.device, &alloc_info, buffers.ptr);
+
+    for (buffers) |buffer, i| {
+        const begin_info = VkCommandBufferBeginInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = null,
+            .flags = 0,
+            .pInheritanceInfo = null,
+        };
+        try beginCommandBuffer(buffer, &begin_info);
+
+        const clear_color = [_]VkClearValue{VkClearValue{
+            .color = VkClearColorValue{ .float32 = [_]f32{ 0.0, 0.0, 0.0, 1.0 } },
+        }};
+        const render_pass_info = VkRenderPassBeginInfo{
+            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .pNext = null,
+            .renderPass = self.render_pass,
+            .framebuffer = self.swap_chain_framebuffers[i],
+            .renderArea = VkRect2D{
+                .offset = VkOffset2D{ .x = 0, .y = 0 },
+                .extent = self.swap_chain.extent,
+            },
+            .clearValueCount = 1,
+            .pClearValues = &clear_color,
+        };
+
+        vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+
+        const vertex_buffers = [_]VkBuffer{vertex_buffer.buffer};
+        const offsets = [_]VkDeviceSize{0};
+        vkCmdBindVertexBuffers(buffer, 0, 1, &vertex_buffers, &offsets);
+        vkCmdBindIndexBuffer(buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+        vkCmdDrawIndexed(buffer, @intCast(u32, index_buffer.len), 1, 0, 0, 0);
+        vkCmdEndRenderPass(buffer);
+
+        try endCommandBuffer(buffer);
+    }
+
+    return buffers;
 }
 
 const VulkanSynchronization = struct {
