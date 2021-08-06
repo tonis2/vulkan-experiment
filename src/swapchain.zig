@@ -3,80 +3,80 @@ const Allocator = std.mem.Allocator;
 const log = std.log;
 
 usingnamespace @import("c.zig");
-usingnamespace @import("queue_family.zig");
 usingnamespace @import("utils.zig");
-usingnamespace @import("window.zig");
+const Window = @import("window.zig");
+const QueueFamilyIndices = @import("vulkan.zig").QueueFamilyIndices;
 
-pub const SwapChain = struct {
+const Self = @This();
+
+allocator: *Allocator,
+swap_chain: VkSwapchainKHR,
+images: []VkImage,
+image_format: VkFormat,
+extent: VkExtent2D,
+image_views: []VkImageView,
+
+pub fn init(
     allocator: *Allocator,
-    swap_chain: VkSwapchainKHR,
-    images: []VkImage,
-    image_format: VkFormat,
-    extent: VkExtent2D,
-    image_views: []VkImageView,
+    physical_device: VkPhysicalDevice,
+    logical_device: VkDevice,
+    window: Window,
+    surface: VkSurfaceKHR,
+    indices: QueueFamilyIndices,
+) !Self {
+    const swap_chain_support = try querySwapChainSupport(allocator, physical_device, surface);
+    defer swap_chain_support.deinit();
 
-    pub fn init(
-        allocator: *Allocator,
-        physical_device: VkPhysicalDevice,
-        logical_device: VkDevice,
-        window: *const Window,
-        surface: VkSurfaceKHR,
-        indices: QueueFamilyIndices,
-    ) !SwapChain {
-        const swap_chain_support = try querySwapChainSupport(allocator, physical_device, surface);
-        defer swap_chain_support.deinit();
+    const surface_format = chooseSwapSurfaceFormat(swap_chain_support.formats);
+    const present_mode = chooseSwapPresentMode(swap_chain_support.present_modes);
+    const extent = chooseSwapExtent(window, swap_chain_support.capabilities);
+    const capabilities = swap_chain_support.capabilities;
 
-        const surface_format = chooseSwapSurfaceFormat(swap_chain_support.formats);
-        const present_mode = chooseSwapPresentMode(swap_chain_support.present_modes);
-        const extent = chooseSwapExtent(window, swap_chain_support.capabilities);
-        const capabilities = swap_chain_support.capabilities;
+    const swap_chain = try createSwapChain(
+        logical_device,
+        surface,
+        indices,
+        capabilities,
+        surface_format,
+        present_mode,
+        extent,
+    );
+    var image_count: u32 = 0;
+    try checkSuccess(
+        vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, null),
+        error.VulkanSwapChainImageRetrievalFailed,
+    );
+    var images = try allocator.alloc(VkImage, image_count);
+    try checkSuccess(
+        vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, images.ptr),
+        error.VulkanSwapChainImageRetrievalFailed,
+    );
 
-        const swap_chain = try createSwapChain(
-            logical_device,
-            surface,
-            indices,
-            capabilities,
-            surface_format,
-            present_mode,
-            extent,
-        );
-        var image_count: u32 = 0;
-        try checkSuccess(
-            vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, null),
-            error.VulkanSwapChainImageRetrievalFailed,
-        );
-        var images = try allocator.alloc(VkImage, image_count);
-        try checkSuccess(
-            vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, images.ptr),
-            error.VulkanSwapChainImageRetrievalFailed,
-        );
+    const image_views = try createImageViews(
+        allocator,
+        logical_device,
+        images,
+        surface_format.format,
+    );
 
-        const image_views = try createImageViews(
-            allocator,
-            logical_device,
-            images,
-            surface_format.format,
-        );
+    return Self{
+        .allocator = allocator,
+        .swap_chain = swap_chain,
+        .images = images,
+        .image_format = surface_format.format,
+        .extent = extent,
+        .image_views = image_views,
+    };
+}
 
-        return SwapChain{
-            .allocator = allocator,
-            .swap_chain = swap_chain,
-            .images = images,
-            .image_format = surface_format.format,
-            .extent = extent,
-            .image_views = image_views,
-        };
+pub fn deinit(self: Self, logical_device: VkDevice) void {
+    self.allocator.free(self.images);
+    for (self.image_views) |view| {
+        vkDestroyImageView(logical_device, view, null);
     }
-
-    pub fn deinit(self: *const SwapChain, logical_device: VkDevice) void {
-        self.allocator.free(self.images);
-        for (self.image_views) |view| {
-            vkDestroyImageView(logical_device, view, null);
-        }
-        self.allocator.free(self.image_views);
-        vkDestroySwapchainKHR(logical_device, self.swap_chain, null);
-    }
-};
+    self.allocator.free(self.image_views);
+    vkDestroySwapchainKHR(logical_device, self.swap_chain, null);
+}
 
 const SwapChainSupportDetails = struct {
     allocator: *Allocator,
@@ -171,7 +171,7 @@ fn chooseSwapPresentMode(available_present_modes: []VkPresentModeKHR) VkPresentM
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-fn chooseSwapExtent(window: *const Window, capabilities: VkSurfaceCapabilitiesKHR) VkExtent2D {
+fn chooseSwapExtent(window: Window, capabilities: VkSurfaceCapabilitiesKHR) VkExtent2D {
     if (capabilities.currentExtent.width != UINT32_MAX) {
         return capabilities.currentExtent;
     } else {

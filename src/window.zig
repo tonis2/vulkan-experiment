@@ -11,75 +11,73 @@ pub const ResizeCallback = struct {
     cb: fn (*c_void) void,
 };
 
-pub const Window = struct {
-    const Self = @This();
+const Self = @This();
 
-    window: *GLFWwindow,
+window: *GLFWwindow,
 
-    pub fn init() !Self {
-        const init_result = glfwInit();
-        if (init_result == GLFW_FALSE) {
-            return error.GLFWInitializationFailed;
-        }
-
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-        const window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan window", null, null);
-        if (window == null) {
-            return error.GLFWInitializationFailed;
-        }
-
-        return Self{ .window = window.? };
+pub fn init() !Self {
+    const init_result = glfwInit();
+    if (init_result == GLFW_FALSE) {
+        return error.GLFWInitializationFailed;
     }
 
-    pub fn deinit(self: *const Self) void {
-        glfwDestroyWindow(self.window);
-        glfwTerminate();
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+    const window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan window", null, null);
+    if (window == null) {
+        return error.GLFWInitializationFailed;
     }
 
-    pub fn registerResizeCallback(self: *Self, callback: *ResizeCallback) void {
-        glfwSetWindowUserPointer(self.window, callback);
-        _ = glfwSetFramebufferSizeCallback(self.window, framebufferResizeCallback);
-    }
+    return Self{ .window = window.? };
+}
 
-    pub fn pollEvents(self: *const Self) void {
-        _ = self;
-        glfwPollEvents();
-    }
+pub fn deinit(self: *const Self) void {
+    glfwDestroyWindow(self.window);
+    glfwTerminate();
+}
 
-    pub fn waitEvents(self: *const Self) void {
-        _ = self;
-        glfwWaitEvents();
-    }
+pub fn registerResizeCallback(self: *Self, callback: *ResizeCallback) void {
+    glfwSetWindowUserPointer(self.window, callback);
+    _ = glfwSetFramebufferSizeCallback(self.window, framebufferResizeCallback);
+}
 
-    pub fn shouldClose(self: *const Self) bool {
-        return glfwWindowShouldClose(self.window) != GLFW_FALSE;
-    }
+pub fn pollEvents(self: *const Self) void {
+    _ = self;
+    glfwPollEvents();
+}
 
-    pub fn isMinimized(self: *const Self) bool {
-        var size = self.getFramebufferSize();
-        return size.width == 0 or size.height == 0;
-    }
+pub fn waitEvents(self: *const Self) void {
+    _ = self;
+    glfwWaitEvents();
+}
 
-    pub fn getFramebufferSize(self: *const Self) Size {
-        var width: c_int = 0;
-        var height: c_int = 0;
-        glfwGetFramebufferSize(self.window, &width, &height);
-        return Size{
-            .width = @intCast(u32, width),
-            .height = @intCast(u32, height),
-        };
-    }
+pub fn shouldClose(self: *const Self) bool {
+    return glfwWindowShouldClose(self.window) != GLFW_FALSE;
+}
 
-    pub fn createSurface(self: *const Self, instance: VkInstance) !VkSurfaceKHR {
-        var surface: VkSurfaceKHR = undefined;
-        try checkSuccess(
-            glfwCreateWindowSurface(instance, self.window, null, &surface),
-            error.VulkanWindowSurfaceCreationFailed,
-        );
-        return surface;
-    }
-};
+pub fn isMinimized(self: *const Self) bool {
+    var size = self.getFramebufferSize();
+    return size.width == 0 or size.height == 0;
+}
+
+pub fn getFramebufferSize(self: *const Self) Size {
+    var width: c_int = 0;
+    var height: c_int = 0;
+    glfwGetFramebufferSize(self.window, &width, &height);
+    return Size{
+        .width = @intCast(u32, width),
+        .height = @intCast(u32, height),
+    };
+}
+
+pub fn createSurface(self: *const Self, instance: VkInstance) !VkSurfaceKHR {
+    var surface: VkSurfaceKHR = undefined;
+    try checkSuccess(
+        glfwCreateWindowSurface(instance, self.window, null, &surface),
+        error.VulkanWindowSurfaceCreationFailed,
+    );
+    return surface;
+}
 
 pub fn getWindowRequiredExtensions(allocator: *std.mem.Allocator) !std.ArrayList([*:0]const u8) {
     var glfw_extension_count: u32 = 0;
