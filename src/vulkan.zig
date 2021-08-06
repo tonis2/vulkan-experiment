@@ -177,12 +177,7 @@ fn cleanUpSwapChain(self: Self) void {
     self.swap_chain.deinit(self.device);
 }
 
-pub fn createCommandBuffers(
-    self: Self,
-    graphics_pipeline: VkPipeline,
-    vertex_buffer: VertexBuffer,
-    index_buffer: IndexBuffer,
-) ![]VkCommandBuffer {
+pub fn createCommandBuffers(self: Self) ![]VkCommandBuffer {
     var buffers = try self.allocator.alloc(VkCommandBuffer, self.swap_chain_framebuffers.len);
     errdefer self.allocator.free(buffers);
 
@@ -196,45 +191,15 @@ pub fn createCommandBuffers(
 
     try allocateCommandBuffers(self.device, &alloc_info, buffers.ptr);
 
-    for (buffers) |buffer, i| {
-        const begin_info = VkCommandBufferBeginInfo{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .pNext = null,
-            .flags = 0,
-            .pInheritanceInfo = null,
-        };
-        try beginCommandBuffer(buffer, &begin_info);
-
-        const clear_color = [_]VkClearValue{VkClearValue{
-            .color = VkClearColorValue{ .float32 = [_]f32{ 0.0, 0.0, 0.0, 1.0 } },
-        }};
-        const render_pass_info = VkRenderPassBeginInfo{
-            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .pNext = null,
-            .renderPass = self.render_pass,
-            .framebuffer = self.swap_chain_framebuffers[i],
-            .renderArea = VkRect2D{
-                .offset = VkOffset2D{ .x = 0, .y = 0 },
-                .extent = self.swap_chain.extent,
-            },
-            .clearValueCount = 1,
-            .pClearValues = &clear_color,
-        };
-
-        vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-
-        const vertex_buffers = [_]VkBuffer{vertex_buffer.buffer};
-        const offsets = [_]VkDeviceSize{0};
-        vkCmdBindVertexBuffers(buffer, 0, 1, &vertex_buffers, &offsets);
-        vkCmdBindIndexBuffer(buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
-        vkCmdDrawIndexed(buffer, @intCast(u32, index_buffer.len), 1, 0, 0, 0);
-        vkCmdEndRenderPass(buffer);
-
-        try endCommandBuffer(buffer);
-    }
-
     return buffers;
+}
+
+pub fn beginCommandBuffer(buffer: VkCommandBuffer, info: *const VkCommandBufferBeginInfo) !void {
+    try checkSuccess(vkBeginCommandBuffer(buffer, info), error.VulkanBeginCommandBufferFailure);
+}
+
+pub fn endCommandBuffer(buffer: VkCommandBuffer) !void {
+    try checkSuccess(vkEndCommandBuffer(buffer), error.VulkanCommandBufferEndFailure);
 }
 
 const VulkanSynchronization = struct {
@@ -321,14 +286,6 @@ pub fn queueSubmit(queue: VkQueue, submit_count: u32, submit_info: *const VkSubm
 
 pub fn queueWaitIdle(queue: VkQueue) !void {
     try checkSuccess(vkQueueWaitIdle(queue), error.VulkanQueueWaitIdleFailure);
-}
-
-pub fn beginCommandBuffer(buffer: VkCommandBuffer, info: *const VkCommandBufferBeginInfo) !void {
-    try checkSuccess(vkBeginCommandBuffer(buffer, info), error.VulkanBeginCommandBufferFailure);
-}
-
-pub fn endCommandBuffer(buffer: VkCommandBuffer) !void {
-    try checkSuccess(vkEndCommandBuffer(buffer), error.VulkanCommandBufferEndFailure);
 }
 
 pub fn allocateCommandBuffers(

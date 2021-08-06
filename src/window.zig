@@ -3,8 +3,8 @@ const std = @import("std");
 usingnamespace @import("c.zig");
 usingnamespace @import("utils.zig");
 
-const WIDTH = 800;
-const HEIGHT = 600;
+const WIDTH = 1200;
+const HEIGHT = 800;
 
 pub const ResizeCallback = struct {
     data: *c_void,

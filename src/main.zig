@@ -37,11 +37,7 @@ pub fn main() !void {
     const vertex_buffer = try VertexBuffer.init(context, &vertices);
     const index_buffer = try IndexBuffer.init(context, &v_indices);
 
-    const command_buffers = try context.vulkan.createCommandBuffers(
-        pipeline.pipeline,
-        vertex_buffer,
-        index_buffer,
-    );
+    const command_buffers = try context.vulkan.createCommandBuffers();
 
     defer {
         vertex_buffer.deinit(context.vulkan.device);
@@ -65,6 +61,46 @@ pub fn main() !void {
     context.window.registerResizeCallback(&callback);
 
     while (!context.shouldClose()) {
+        for (command_buffers) |buffer, i| {
+            const begin_info = VkCommandBufferBeginInfo{
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .pNext = null,
+                .flags = 0,
+                .pInheritanceInfo = null,
+            };
+
+            try checkSuccess(vkBeginCommandBuffer(buffer, &begin_info), error.VulkanBeginCommandBufferFailure);
+
+            const clear_color = [_]VkClearValue{VkClearValue{
+                .color = VkClearColorValue{ .float32 = [_]f32{ 0.0, 0.0, 0.0, 1.0 } },
+            }};
+
+            const render_pass_info = VkRenderPassBeginInfo{
+                .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                .pNext = null,
+                .renderPass = context.vulkan.render_pass,
+                .framebuffer = context.vulkan.swap_chain_framebuffers[i],
+                .renderArea = VkRect2D{
+                    .offset = VkOffset2D{ .x = 0, .y = 0 },
+                    .extent = context.vulkan.swap_chain.extent,
+                },
+                .clearValueCount = 1,
+                .pClearValues = &clear_color,
+            };
+
+            vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
+
+            const vertex_buffers = [_]VkBuffer{vertex_buffer.buffer};
+            const offsets = [_]VkDeviceSize{0};
+            vkCmdBindVertexBuffers(buffer, 0, 1, &vertex_buffers, &offsets);
+            vkCmdBindIndexBuffer(buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+            vkCmdDrawIndexed(buffer, @intCast(u32, index_buffer.len), 1, 0, 0, 0);
+            vkCmdEndRenderPass(buffer);
+
+            try checkSuccess(vkEndCommandBuffer(buffer), error.VulkanCommandBufferEndFailure);
+        }
+
         try context.renderFrame(command_buffers);
     }
 }
