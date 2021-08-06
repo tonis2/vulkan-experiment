@@ -4,14 +4,18 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
 const dbg = @import("debug.zig");
-const Pipeline = @import("pipeline.zig");
-const SwapChain = @import("swapchain.zig");
-const Window = @import("window.zig");
 const log = std.log;
 
-usingnamespace @import("c.zig");
-usingnamespace @import("utils.zig");
-usingnamespace @import("buffer.zig");
+pub const SwapChain = @import("swapchain.zig");
+pub const Window = @import("window.zig");
+pub const Context = @import("context.zig");
+pub const Buffer = @import("buffer.zig").Buffer;
+pub const C = @import("c.zig");
+pub const Utils = @import("utils.zig");
+pub const ResizeCallback = Window.ResizeCallback;
+
+usingnamespace C;
+usingnamespace Utils;
 
 // Couldn't use UINT64_MAX for some reason
 

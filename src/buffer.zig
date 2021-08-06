@@ -7,10 +7,7 @@ usingnamespace @import("utils.zig");
 const vk = @import("vulkan.zig");
 const Context = @import("context.zig");
 
-pub const VertexBuffer = Buffer(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-pub const IndexBuffer = Buffer(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
-fn Buffer(comptime T: type, usage: c_int) type {
+pub fn Buffer(comptime T: type, usage: c_int) type {
     return struct {
         const Self = @This();
 
@@ -185,4 +182,3 @@ pub fn createBuffer(
 
     try checkSuccess(vkBindBufferMemory(device, buffer.*, buffer_memory.*, 0), error.VulkanBindBufferMemoryFailure);
 }
-

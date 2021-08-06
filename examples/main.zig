@@ -1,18 +1,22 @@
-const builtin = @import("builtin");
 const std = @import("std");
-
 const Allocator = std.mem.Allocator;
-const ArrayList = std.ArrayList;
-const Context = @import("context.zig");
-const Pipeline = @import("pipeline.zig");
 const log = std.log;
 
-usingnamespace @import("c.zig");
-usingnamespace @import("utils.zig");
-usingnamespace @import("window.zig");
-usingnamespace @import("buffer.zig");
+const Vulkan = @import("vulkan");
+const Context = Vulkan.Context;
+const Buffer = Vulkan.Buffer;
+
+usingnamespace Vulkan.C;
+usingnamespace Vulkan.Utils;
+
+pub const Pipeline = @import("pipeline.zig");
 
 pub const log_level: std.log.Level = .warn;
+const Vertex = Pipeline.Vertex;
+const Vec2 = Pipeline.Vec2;
+const Vec3 = Pipeline.Vec3;
+
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
 const vertices = [_]Vertex{
     Vertex{ .pos = Vec2.new(-0.5, -0.5), .color = Vec3.new(1.0, 0.0, 0.0) },
@@ -23,8 +27,6 @@ const vertices = [_]Vertex{
 
 const v_indices = [_]u16{ 0, 1, 2, 2, 3, 0 };
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-
 pub fn main() !void {
     const allocator = &gpa.allocator;
 
@@ -34,8 +36,8 @@ pub fn main() !void {
     defer context.deinit();
 
     const pipeline = try Pipeline.init(context);
-    const vertex_buffer = try VertexBuffer.init(context, &vertices);
-    const index_buffer = try IndexBuffer.init(context, &v_indices);
+    const vertex_buffer = try Buffer(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(context, &vertices);
+    const index_buffer = try Buffer(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(context, &v_indices);
 
     const command_buffers = try context.vulkan.createCommandBuffers();
 
@@ -53,7 +55,7 @@ pub fn main() !void {
         allocator.free(command_buffers);
     }
 
-    var callback = ResizeCallback{
+    var callback = Vulkan.ResizeCallback{
         .data = &context,
         .cb = framebufferResizeCallback,
     };
