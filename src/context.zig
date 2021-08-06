@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const Allocator = std.mem.Allocator;
-const ArrayList = std.ArrayList;
 const Vulkan = @import("vulkan.zig");
 const Window = @import("window.zig");
 
