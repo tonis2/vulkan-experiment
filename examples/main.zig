@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 const log = std.log;
 
 const Vulkan = @import("vulkan");
-const Context = Vulkan.Context;
+
 const Buffer = Vulkan.Buffer;
 const Window = Vulkan.Window;
 
@@ -45,25 +45,30 @@ pub fn main() !void {
 
     const window = try Window.init(1400, 900);
     errdefer window.deinit();
-    var context = try Context.init(allocator, window);
+    var vulkan = try Vulkan.init(allocator, window);
+    errdefer vulkan.deinit();
 
-    const renderpass = try Renderpass.init(context);
-    const pipeline = try Pipeline.init(context, renderpass.renderpass);
+    var syncronisation = try Vulkan.Synchronization.init(&vulkan, allocator, vulkan.swapchain.images.len);
+    errdefer syncronisation.deinit();
 
-    const vertex_buffer = try Buffer(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(context, &vertices);
-    const index_buffer = try Buffer(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(context, &v_indices);
+    const renderpass = try Renderpass.init(vulkan);
+    const pipeline = try Pipeline.init(vulkan, renderpass.renderpass);
+
+    const vertex_buffer = try Buffer(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(vulkan, &vertices);
+    const index_buffer = try Buffer(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(vulkan, &v_indices);
 
     defer {
-        vertex_buffer.deinit(context);
-        index_buffer.deinit(context);
-        renderpass.deinit(context);
-        pipeline.deinit(context);
+        vertex_buffer.deinit(vulkan);
+        index_buffer.deinit(vulkan);
+        renderpass.deinit(vulkan);
+        pipeline.deinit(vulkan);
+        syncronisation.deinit();
         window.deinit();
-        context.deinit();
+        vulkan.deinit();
     }
 
     while (!window.shouldClose()) {
-        for (context.vulkan.commandbuffers) |buffer, i| {
+        for (vulkan.commandbuffers) |buffer, i| {
             const begin_info = VkCommandBufferBeginInfo{
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                 .pNext = null,
@@ -84,7 +89,7 @@ pub fn main() !void {
                 .framebuffer = renderpass.framebuffers[i],
                 .renderArea = VkRect2D{
                     .offset = VkOffset2D{ .x = 0, .y = 0 },
-                    .extent = context.vulkan.swapchain.extent,
+                    .extent = vulkan.swapchain.extent,
                 },
                 .clearValueCount = 1,
                 .pClearValues = &clear_color,
@@ -103,6 +108,6 @@ pub fn main() !void {
             try checkSuccess(vkEndCommandBuffer(buffer), error.VulkanCommandBufferEndFailure);
         }
 
-        try context.renderFrame(context.vulkan.commandbuffers);
+        try syncronisation.drawFrame(vulkan.commandbuffers);
     }
 }

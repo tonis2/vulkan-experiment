@@ -1,17 +1,17 @@
 const Self = @This();
 const Vulkan = @import("vulkan");
 
-const Context = Vulkan.Context;
+
 usingnamespace Vulkan.C;
 usingnamespace Vulkan.Utils;
 
 framebuffers: []VkFramebuffer,
 renderpass: VkRenderPass,
 
-pub fn init(ctx: Context) !Self {
+pub fn init(vulkan: Vulkan) !Self {
     const color_attachment = VkAttachmentDescription{
         .flags = 0,
-        .format = ctx.vulkan.swapchain.image_format,
+        .format = vulkan.swapchain.image_format,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -62,14 +62,14 @@ pub fn init(ctx: Context) !Self {
         .pDependencies = &dependency,
     };
     try checkSuccess(
-        vkCreateRenderPass(ctx.vulkan.device, &render_pass_info, null, &renderpass),
+        vkCreateRenderPass(vulkan.device, &render_pass_info, null, &renderpass),
         error.VulkanRenderPassCreationFailed,
     );
 
-    var framebuffers = try ctx.allocator.alloc(VkFramebuffer, ctx.vulkan.swapchain.image_views.len);
-    errdefer ctx.allocator.free(framebuffers);
+    var framebuffers = try vulkan.allocator.alloc(VkFramebuffer, vulkan.swapchain.image_views.len);
+    errdefer vulkan.allocator.free(framebuffers);
 
-    for (ctx.vulkan.swapchain.image_views) |image_view, i| {
+    for (vulkan.swapchain.image_views) |image_view, i| {
         var attachments = [_]VkImageView{image_view};
         const frame_buffer_info = VkFramebufferCreateInfo{
             .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -78,13 +78,13 @@ pub fn init(ctx: Context) !Self {
             .renderPass = renderpass,
             .attachmentCount = 1,
             .pAttachments = &attachments,
-            .width = ctx.vulkan.swapchain.extent.width,
-            .height = ctx.vulkan.swapchain.extent.height,
+            .width = vulkan.swapchain.extent.width,
+            .height = vulkan.swapchain.extent.height,
             .layers = 1,
         };
 
         try checkSuccess(
-            vkCreateFramebuffer(ctx.vulkan.device, &frame_buffer_info, null, &framebuffers[i]),
+            vkCreateFramebuffer(vulkan.device, &frame_buffer_info, null, &framebuffers[i]),
             error.VulkanFramebufferCreationFailed,
         );
     }
@@ -95,11 +95,11 @@ pub fn init(ctx: Context) !Self {
     };
 }
 
-pub fn deinit(self: Self, ctx: Context) void {
+pub fn deinit(self: Self, vulkan: Vulkan) void {
     for (self.framebuffers) |framebuffer| {
-        vkDestroyFramebuffer(ctx.vulkan.device, framebuffer, null);
+        vkDestroyFramebuffer(vulkan.device, framebuffer, null);
     }
 
-    ctx.allocator.free(self.framebuffers);
-    vkDestroyRenderPass(ctx.vulkan.device, self.renderpass, null);
+    vulkan.allocator.free(self.framebuffers);
+    vkDestroyRenderPass(vulkan.device, self.renderpass, null);
 }

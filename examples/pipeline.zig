@@ -1,5 +1,5 @@
 const Vulkan = @import("vulkan");
-const Context = Vulkan.Context;
+
 usingnamespace Vulkan.C;
 usingnamespace Vulkan.Utils;
 
@@ -60,15 +60,15 @@ pub const Vertex = struct {
 layout: VkPipelineLayout,
 pipeline: VkPipeline,
 
-pub fn init(ctx: Context, renderPass: VkRenderPass) !Self {
+pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
     const vert_code align(4) = @embedFile("./vert.spv").*;
     const frag_code align(4) = @embedFile("./frag.spv").*;
 
-    const vert_module = try Vulkan.createShaderModule(ctx.vulkan.device, &vert_code);
-    defer vkDestroyShaderModule(ctx.vulkan.device, vert_module, null);
+    const vert_module = try Vulkan.createShaderModule(vulkan.device, &vert_code);
+    defer vkDestroyShaderModule(vulkan.device, vert_module, null);
 
-    const frag_module = try Vulkan.createShaderModule(ctx.vulkan.device, &frag_code);
-    defer vkDestroyShaderModule(ctx.vulkan.device, frag_module, null);
+    const frag_module = try Vulkan.createShaderModule(vulkan.device, &frag_code);
+    defer vkDestroyShaderModule(vulkan.device, frag_module, null);
 
     const vert_stage_info = VkPipelineShaderStageCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -115,15 +115,15 @@ pub fn init(ctx: Context, renderPass: VkRenderPass) !Self {
     const viewport = VkViewport{
         .x = 0.0,
         .y = 0.0,
-        .width = @intToFloat(f32, ctx.vulkan.swapchain.extent.width),
-        .height = @intToFloat(f32, ctx.vulkan.swapchain.extent.height),
+        .width = @intToFloat(f32, vulkan.swapchain.extent.width),
+        .height = @intToFloat(f32, vulkan.swapchain.extent.height),
         .minDepth = 0.0,
         .maxDepth = 1.0,
     };
 
     const scissor = VkRect2D{
         .offset = VkOffset2D{ .x = 0, .y = 0 },
-        .extent = ctx.vulkan.swapchain.extent,
+        .extent = vulkan.swapchain.extent,
     };
 
     const viewport_state = VkPipelineViewportStateCreateInfo{
@@ -212,7 +212,7 @@ pub fn init(ctx: Context, renderPass: VkRenderPass) !Self {
     };
     var pipeline_layout: VkPipelineLayout = undefined;
     try checkSuccess(
-        vkCreatePipelineLayout(ctx.vulkan.device, &pipeline_layout_info, null, &pipeline_layout),
+        vkCreatePipelineLayout(vulkan.device, &pipeline_layout_info, null, &pipeline_layout),
         error.VulkanPipelineLayoutCreationFailed,
     );
 
@@ -237,9 +237,10 @@ pub fn init(ctx: Context, renderPass: VkRenderPass) !Self {
         .basePipelineHandle = null,
         .basePipelineIndex = -1,
     };
+
     var pipeline: VkPipeline = undefined;
     try checkSuccess(
-        vkCreateGraphicsPipelines(ctx.vulkan.device, null, 1, &pipeline_info, null, &pipeline),
+        vkCreateGraphicsPipelines(vulkan.device, null, 1, &pipeline_info, null, &pipeline),
         error.VulkanPipelineCreationFailed,
     );
 
@@ -249,7 +250,7 @@ pub fn init(ctx: Context, renderPass: VkRenderPass) !Self {
     };
 }
 
-pub fn deinit(self: Self, ctx: Context) void {
-    vkDestroyPipeline(ctx.vulkan.device, self.pipeline, null);
-    vkDestroyPipelineLayout(ctx.vulkan.device, self.layout, null);
+pub fn deinit(self: Self, vulkan: Vulkan) void {
+    vkDestroyPipeline(vulkan.device, self.pipeline, null);
+    vkDestroyPipelineLayout(vulkan.device, self.layout, null);
 }

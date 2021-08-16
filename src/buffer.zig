@@ -4,8 +4,8 @@ const Allocator = std.mem.Allocator;
 usingnamespace @import("c.zig");
 usingnamespace @import("utils.zig");
 
-const vk = @import("vulkan.zig");
-const Context = @import("context.zig");
+const Vulkan = @import("vulkan.zig");
+
 
 pub fn Buffer(comptime T: type, usage: c_int) type {
     return struct {
@@ -16,7 +16,7 @@ pub fn Buffer(comptime T: type, usage: c_int) type {
         len: usize,
 
         pub fn init(
-            ctx: Context,
+            vulkan: Vulkan,
             content: []const T,
         ) !Self {
             const buffer_size = @sizeOf(T) * content.len;
@@ -24,8 +24,8 @@ pub fn Buffer(comptime T: type, usage: c_int) type {
             var staging_buffer: VkBuffer = undefined;
             var staging_memory: VkDeviceMemory = undefined;
             try createBuffer(
-                ctx.vulkan.physical_device,
-                ctx.vulkan.device,
+                vulkan.physical_device,
+                vulkan.device,
                 buffer_size,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -33,21 +33,21 @@ pub fn Buffer(comptime T: type, usage: c_int) type {
                 &staging_memory,
             );
             defer {
-                vkDestroyBuffer(ctx.vulkan.device, staging_buffer, null);
-                vkFreeMemory(ctx.vulkan.device, staging_memory, null);
+                vkDestroyBuffer(vulkan.device, staging_buffer, null);
+                vkFreeMemory(vulkan.device, staging_memory, null);
             }
 
             var data: ?*c_void = undefined;
-            try checkSuccess(vkMapMemory(ctx.vulkan.device, staging_memory, 0, buffer_size, 0, &data), error.VulkanMapMemoryError);
+            try checkSuccess(vkMapMemory(vulkan.device, staging_memory, 0, buffer_size, 0, &data), error.VulkanMapMemoryError);
             const bytes = @ptrCast([*]const u8, @alignCast(@alignOf(T), std.mem.sliceAsBytes(content)));
             @memcpy(@ptrCast([*]u8, data), bytes, buffer_size);
-            vkUnmapMemory(ctx.vulkan.device, staging_memory);
+            vkUnmapMemory(vulkan.device, staging_memory);
 
             var buffer: VkBuffer = undefined;
             var memory: VkDeviceMemory = undefined;
             try createBuffer(
-                ctx.vulkan.physical_device,
-                ctx.vulkan.device,
+                vulkan.physical_device,
+                vulkan.device,
                 buffer_size,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -55,11 +55,11 @@ pub fn Buffer(comptime T: type, usage: c_int) type {
                 &memory,
             );
             errdefer {
-                vkDestroyBuffer(ctx.vulkan.device, buffer, null);
-                vkFreeMemory(ctx.vulkan.device, memory, null);
+                vkDestroyBuffer(vulkan.device, buffer, null);
+                vkFreeMemory(vulkan.device, memory, null);
             }
 
-            try copyBuffer(ctx.vulkan.device, ctx.vulkan.graphics_queue, ctx.vulkan.command_pool, staging_buffer, buffer, buffer_size);
+            try copyBuffer(vulkan.device, vulkan.graphics_queue, vulkan.command_pool, staging_buffer, buffer, buffer_size);
 
             return Self{
                 .buffer = buffer,
@@ -68,9 +68,9 @@ pub fn Buffer(comptime T: type, usage: c_int) type {
             };
         }
 
-        pub fn deinit(self: Self, ctx: Context) void {
-            vkDestroyBuffer(ctx.vulkan.device, self.buffer, null);
-            vkFreeMemory(ctx.vulkan.device, self.memory, null);
+        pub fn deinit(self: Self, vulkan: Vulkan) void {
+            vkDestroyBuffer(vulkan.device, self.buffer, null);
+            vkFreeMemory(vulkan.device, self.memory, null);
         }
     };
 }
@@ -92,7 +92,7 @@ pub fn copyBuffer(
         .commandBufferCount = 1,
     };
     var command_buffer: VkCommandBuffer = undefined;
-    try vk.allocateCommandBuffers(device, &alloc_info, &command_buffer);
+    try Vulkan.allocateCommandBuffers(device, &alloc_info, &command_buffer);
     defer vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
 
     const begin_info = VkCommandBufferBeginInfo{
@@ -102,11 +102,11 @@ pub fn copyBuffer(
         .pInheritanceInfo = null,
     };
 
-    try vk.beginCommandBuffer(command_buffer, &begin_info);
+    try Vulkan.beginCommandBuffer(command_buffer, &begin_info);
 
     const copy_region = VkBufferCopy{ .srcOffset = 0, .dstOffset = 0, .size = size };
     vkCmdCopyBuffer(command_buffer, src, dst, 1, &copy_region);
-    try vk.endCommandBuffer(command_buffer);
+    try Vulkan.endCommandBuffer(command_buffer);
 
     const submit_info = VkSubmitInfo{
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -120,8 +120,8 @@ pub fn copyBuffer(
         .pSignalSemaphores = null,
     };
 
-    try vk.queueSubmit(graphics_queue, 1, &submit_info, null);
-    try vk.queueWaitIdle(graphics_queue);
+    try Vulkan.queueSubmit(graphics_queue, 1, &submit_info, null);
+    try Vulkan.queueWaitIdle(graphics_queue);
 }
 
 fn findMemoryType(physical_device: VkPhysicalDevice, type_filter: u32, properties: VkMemoryPropertyFlags) !u32 {

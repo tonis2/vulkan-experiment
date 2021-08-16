@@ -8,7 +8,6 @@ const log = std.log;
 
 pub const SwapChain = @import("swapchain.zig");
 pub const Window = @import("window.zig");
-pub const Context = @import("context.zig");
 pub const Buffer = @import("buffer.zig").Buffer;
 pub const C = @import("c.zig");
 pub const Utils = @import("utils.zig");
@@ -38,8 +37,8 @@ surface: VkSurfaceKHR,
 swapchain: SwapChain,
 command_pool: VkCommandPool,
 commandbuffers: []VkCommandBuffer,
-sync: VulkanSynchronization,
 debug_messenger: ?VkDebugUtilsMessengerEXT,
+window: Window,
 
 // TODO: use errdefer to clean up stuff in case of errors
 pub fn init(allocator: *Allocator, window: Window) !Self {
@@ -129,9 +128,6 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
     const command_pool = try createCommandPool(device, indices);
     const commandbuffers = try createCommandBuffers(device, command_pool, allocator, swapchain.images.len);
 
-    var sync = try VulkanSynchronization.init(allocator, device, swapchain.images.len);
-    errdefer sync.deinit(device);
-
     return Self{
         .allocator = allocator,
         .instance = instance,
@@ -144,7 +140,7 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
         .swapchain = swapchain,
         .command_pool = command_pool,
         .commandbuffers = commandbuffers,
-        .sync = sync,
+        .window = window,
         .debug_messenger = debug_messenger,
     };
 }
@@ -155,7 +151,6 @@ pub fn deinit(self: Self) void {
         log.warn("Unable to wait for Vulkan device to be idle before cleanup", .{});
     }
 
-    self.sync.deinit(self.device);
     self.swapchain.deinit(self.device);
 
     vkFreeCommandBuffers(
@@ -192,88 +187,18 @@ pub fn createCommandBuffers(device: VkDevice, commandpool: VkCommandPool, alloca
     return buffers;
 }
 
-pub fn beginCommandBuffer(buffer: VkCommandBuffer, info: *const VkCommandBufferBeginInfo) !void {
-    try checkSuccess(vkBeginCommandBuffer(buffer, info), error.VulkanBeginCommandBufferFailure);
+pub fn recreateSwapChain(self: *Self) !void {
+    try checkSuccess(vkDeviceWaitIdle(self.device), error.WaitingIdleFailed);
+    self.swapchain.deinit(self.device);
+    self.swapchain = try SwapChain.init(
+        self.allocator,
+        self.physical_device,
+        self.device,
+        self.surface,
+        self.window,
+        self.queue_family_indices,
+    );
 }
-
-pub fn endCommandBuffer(buffer: VkCommandBuffer) !void {
-    try checkSuccess(vkEndCommandBuffer(buffer), error.VulkanCommandBufferEndFailure);
-}
-
-const VulkanSynchronization = struct {
-    allocator: *Allocator,
-    image_available_semaphores: []VkSemaphore,
-    render_finished_semaphores: []VkSemaphore,
-    in_flight_fences: []VkFence,
-    images_in_flight: []?VkFence,
-
-    fn init(allocator: *Allocator, device: VkDevice, image_count: usize) !VulkanSynchronization {
-        var image_available_semaphores = try allocator.alloc(VkSemaphore, MAX_FRAMES_IN_FLIGHT);
-        errdefer allocator.free(image_available_semaphores);
-
-        var render_finished_semaphores = try allocator.alloc(VkSemaphore, MAX_FRAMES_IN_FLIGHT);
-        errdefer allocator.free(render_finished_semaphores);
-
-        var in_flight_fences = try allocator.alloc(VkFence, MAX_FRAMES_IN_FLIGHT);
-        errdefer allocator.free(in_flight_fences);
-
-        var images_in_flight = try allocator.alloc(?VkFence, image_count);
-        errdefer allocator.free(images_in_flight);
-
-        var i: usize = 0;
-        while (i < MAX_FRAMES_IN_FLIGHT) : (i += 1) {
-            const semaphore = try createSemaphore(device);
-            errdefer vkDestroySemaphore(device, semaphore);
-            image_available_semaphores[i] = semaphore;
-        }
-
-        i = 0;
-        while (i < MAX_FRAMES_IN_FLIGHT) : (i += 1) {
-            const semaphore = try createSemaphore(device);
-            errdefer vkDestroySemaphore(device, semaphore);
-            render_finished_semaphores[i] = semaphore;
-        }
-
-        i = 0;
-        while (i < MAX_FRAMES_IN_FLIGHT) : (i += 1) {
-            const fence = try createFence(device);
-            errdefer vkDestroyFence(device, fence, null);
-            in_flight_fences[i] = fence;
-        }
-
-        i = 0;
-        while (i < image_count) : (i += 1) {
-            images_in_flight[i] = null;
-        }
-
-        return VulkanSynchronization{
-            .allocator = allocator,
-            .image_available_semaphores = image_available_semaphores,
-            .render_finished_semaphores = render_finished_semaphores,
-            .in_flight_fences = in_flight_fences,
-            .images_in_flight = images_in_flight,
-        };
-    }
-
-    fn deinit(self: VulkanSynchronization, device: VkDevice) void {
-        for (self.render_finished_semaphores) |semaphore| {
-            vkDestroySemaphore(device, semaphore, null);
-        }
-        self.allocator.free(self.render_finished_semaphores);
-
-        for (self.image_available_semaphores) |semaphore| {
-            vkDestroySemaphore(device, semaphore, null);
-        }
-        self.allocator.free(self.image_available_semaphores);
-
-        for (self.in_flight_fences) |fence| {
-            vkDestroyFence(device, fence, null);
-        }
-
-        self.allocator.free(self.in_flight_fences);
-        self.allocator.free(self.images_in_flight);
-    }
-};
 
 pub fn queueSubmit(queue: VkQueue, submit_count: u32, submit_info: *const VkSubmitInfo, fence: ?VkFence) !void {
     try checkSuccess(
@@ -284,6 +209,14 @@ pub fn queueSubmit(queue: VkQueue, submit_count: u32, submit_info: *const VkSubm
 
 pub fn queueWaitIdle(queue: VkQueue) !void {
     try checkSuccess(vkQueueWaitIdle(queue), error.VulkanQueueWaitIdleFailure);
+}
+
+pub fn beginCommandBuffer(buffer: VkCommandBuffer, info: *const VkCommandBufferBeginInfo) !void {
+    try checkSuccess(vkBeginCommandBuffer(buffer, info), error.VulkanBeginCommandBufferFailure);
+}
+
+pub fn endCommandBuffer(buffer: VkCommandBuffer) !void {
+    try checkSuccess(vkEndCommandBuffer(buffer), error.VulkanCommandBufferEndFailure);
 }
 
 pub fn allocateCommandBuffers(
@@ -589,3 +522,165 @@ pub fn findQueueFamilies(allocator: *Allocator, device: VkPhysicalDevice, surfac
 
     return indices;
 }
+
+pub const Synchronization = struct {
+    vulkan: *Self,
+    allocator: *Allocator,
+    image_available_semaphores: []VkSemaphore,
+    render_finished_semaphores: []VkSemaphore,
+    in_flight_fences: []VkFence,
+    images_in_flight: []?VkFence,
+    currentFrame: u32 = 0,
+
+    pub fn init(vulkan: *Self, allocator: *Allocator, image_count: usize) !Synchronization {
+        var image_available_semaphores = try allocator.alloc(VkSemaphore, MAX_FRAMES_IN_FLIGHT);
+        errdefer allocator.free(image_available_semaphores);
+
+        var render_finished_semaphores = try allocator.alloc(VkSemaphore, MAX_FRAMES_IN_FLIGHT);
+        errdefer allocator.free(render_finished_semaphores);
+
+        var in_flight_fences = try allocator.alloc(VkFence, MAX_FRAMES_IN_FLIGHT);
+        errdefer allocator.free(in_flight_fences);
+
+        var images_in_flight = try allocator.alloc(?VkFence, image_count);
+        errdefer allocator.free(images_in_flight);
+
+        var i: usize = 0;
+        while (i < MAX_FRAMES_IN_FLIGHT) : (i += 1) {
+            const semaphore = try createSemaphore(vulkan.device);
+            errdefer vkDestroySemaphore(vulkan.device, semaphore);
+            image_available_semaphores[i] = semaphore;
+        }
+
+        i = 0;
+        while (i < MAX_FRAMES_IN_FLIGHT) : (i += 1) {
+            const semaphore = try createSemaphore(vulkan.device);
+            errdefer vkDestroySemaphore(vulkan.device, semaphore);
+            render_finished_semaphores[i] = semaphore;
+        }
+
+        i = 0;
+        while (i < MAX_FRAMES_IN_FLIGHT) : (i += 1) {
+            const fence = try createFence(vulkan.device);
+            errdefer vkDestroyFence(vulkan.device, fence, null);
+            in_flight_fences[i] = fence;
+        }
+
+        i = 0;
+        while (i < image_count) : (i += 1) {
+            images_in_flight[i] = null;
+        }
+
+        return Synchronization{
+            .vulkan = vulkan,
+            .allocator = allocator,
+            .image_available_semaphores = image_available_semaphores,
+            .render_finished_semaphores = render_finished_semaphores,
+            .in_flight_fences = in_flight_fences,
+            .images_in_flight = images_in_flight,
+        };
+    }
+
+    pub fn deinit(self: Synchronization) void {
+        for (self.render_finished_semaphores) |semaphore| {
+            vkDestroySemaphore(self.vulkan.device, semaphore, null);
+        }
+        self.allocator.free(self.render_finished_semaphores);
+
+        for (self.image_available_semaphores) |semaphore| {
+            vkDestroySemaphore(self.vulkan.device, semaphore, null);
+        }
+        self.allocator.free(self.image_available_semaphores);
+
+        for (self.in_flight_fences) |fence| {
+            vkDestroyFence(self.vulkan.device, fence, null);
+        }
+
+        self.allocator.free(self.in_flight_fences);
+        self.allocator.free(self.images_in_flight);
+    }
+
+    pub fn drawFrame(self: *Synchronization, commandBuffers: []VkCommandBuffer) !void {
+
+        try checkSuccess(
+            vkWaitForFences(self.vulkan.device, 1, &self.in_flight_fences[self.currentFrame], VK_TRUE, MAX_UINT64),
+            error.VulkanWaitForFencesFailure,
+        );
+
+        var image_index: u32 = 0;
+        {
+            const result = vkAcquireNextImageKHR(
+                self.vulkan.device,
+                self.vulkan.swapchain.swapchain,
+                MAX_UINT64,
+                self.image_available_semaphores[self.currentFrame],
+                null,
+                &image_index,
+            );
+            if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+                // swap chain cannot be used (e.g. due to window resize)
+                try self.vulkan.recreateSwapChain();
+                return;
+            } else if (result != VK_SUCCESS and result != VK_SUBOPTIMAL_KHR) {
+                return error.VulkanSwapChainAcquireNextImageFailure;
+            } else {
+                // swap chain may be suboptimal, but we go ahead and render anyways and recreate it later
+            }
+        }
+
+        // check if a previous frame is using this image (i.e. it has a fence to wait on)
+        if (self.images_in_flight[image_index]) |fence| {
+            try checkSuccess(
+                vkWaitForFences(self.vulkan.device, 1, &fence, VK_TRUE, MAX_UINT64),
+                error.VulkanWaitForFenceFailure,
+            );
+        }
+        // mark the image as now being in use by this frame
+        self.images_in_flight[image_index] = self.in_flight_fences[self.currentFrame];
+
+        const wait_semaphores = [_]VkSemaphore{self.image_available_semaphores[self.currentFrame]};
+        const signal_semaphores = [_]VkSemaphore{self.render_finished_semaphores[self.currentFrame]};
+        const wait_stages = [_]VkPipelineStageFlags{VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+        const submit_info = VkSubmitInfo{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = null,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &wait_semaphores,
+            .pWaitDstStageMask = &wait_stages,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &commandBuffers[image_index],
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &signal_semaphores,
+        };
+
+        try checkSuccess(
+            vkResetFences(self.vulkan.device, 1, &self.in_flight_fences[self.currentFrame]),
+            error.VulkanResetFencesFailure,
+        );
+
+        try queueSubmit(self.vulkan.graphics_queue, 1, &submit_info, self.in_flight_fences[self.currentFrame]);
+
+        const swapchains = [_]VkSwapchainKHR{self.vulkan.swapchain.swapchain};
+        const present_info = VkPresentInfoKHR{
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = null,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &signal_semaphores,
+            .swapchainCount = 1,
+            .pSwapchains = &swapchains,
+            .pImageIndices = &image_index,
+            .pResults = null,
+        };
+
+        {
+            const result = vkQueuePresentKHR(self.vulkan.present_queue, &present_info);
+            if (result == VK_ERROR_OUT_OF_DATE_KHR or result == VK_SUBOPTIMAL_KHR) {
+                try self.vulkan.recreateSwapChain();
+            } else if (result != VK_SUCCESS) {
+                return error.VulkanQueuePresentFailure;
+            }
+        }
+
+        self.currentFrame = (self.currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    }
+};
