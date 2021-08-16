@@ -61,8 +61,8 @@ layout: VkPipelineLayout,
 pipeline: VkPipeline,
 
 pub fn init(ctx: Context, renderPass: VkRenderPass) !Self {
-    const vert_code align(4) = @embedFile("../vert.spv").*;
-    const frag_code align(4) = @embedFile("../frag.spv").*;
+    const vert_code align(4) = @embedFile("./vert.spv").*;
+    const frag_code align(4) = @embedFile("./frag.spv").*;
 
     const vert_module = try Vulkan.createShaderModule(ctx.vulkan.device, &vert_code);
     defer vkDestroyShaderModule(ctx.vulkan.device, vert_module, null);
