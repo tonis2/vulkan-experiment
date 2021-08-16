@@ -35,10 +35,9 @@ graphics_queue: VkQueue,
 present_queue: VkQueue,
 queue_family_indices: QueueFamilyIndices,
 surface: VkSurfaceKHR,
-swap_chain: SwapChain,
-render_pass: VkRenderPass,
-swap_chain_framebuffers: []VkFramebuffer,
+swapchain: SwapChain,
 command_pool: VkCommandPool,
+commandbuffers: []VkCommandBuffer,
 sync: VulkanSynchronization,
 debug_messenger: ?VkDebugUtilsMessengerEXT,
 
@@ -118,20 +117,19 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
         &present_queue,
     );
 
-    const swap_chain = try SwapChain.init(
+    const swapchain = try SwapChain.init(
         allocator,
         physical_device,
         device,
-        window,
         surface,
+        window,
         indices,
     );
 
-    const render_pass = try createRenderPass(device, swap_chain.image_format, swap_chain.extent);
-    const swap_chain_framebuffers = try createFramebuffers(allocator, device, render_pass, swap_chain);
     const command_pool = try createCommandPool(device, indices);
+    const commandbuffers = try createCommandBuffers(device, command_pool, allocator, swapchain.images.len);
 
-    var sync = try VulkanSynchronization.init(allocator, device, swap_chain.images.len);
+    var sync = try VulkanSynchronization.init(allocator, device, swapchain.images.len);
     errdefer sync.deinit(device);
 
     return Self{
@@ -143,10 +141,9 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
         .present_queue = present_queue,
         .queue_family_indices = indices,
         .surface = surface,
-        .swap_chain = swap_chain,
-        .render_pass = render_pass,
-        .swap_chain_framebuffers = swap_chain_framebuffers,
+        .swapchain = swapchain,
         .command_pool = command_pool,
+        .commandbuffers = commandbuffers,
         .sync = sync,
         .debug_messenger = debug_messenger,
     };
@@ -158,9 +155,16 @@ pub fn deinit(self: Self) void {
         log.warn("Unable to wait for Vulkan device to be idle before cleanup", .{});
     }
 
-    self.cleanUpSwapChain();
-
     self.sync.deinit(self.device);
+    self.swapchain.deinit(self.device);
+
+    vkFreeCommandBuffers(
+        self.device,
+        self.command_pool,
+        @intCast(u32, self.commandbuffers.len),
+        self.commandbuffers.ptr,
+    );
+    self.allocator.free(self.commandbuffers);
 
     vkDestroyCommandPool(self.device, self.command_pool, null);
     vkDestroyDevice(self.device, null);
@@ -171,29 +175,19 @@ pub fn deinit(self: Self) void {
     vkDestroyInstance(self.instance, null);
 }
 
-fn cleanUpSwapChain(self: Self) void {
-    for (self.swap_chain_framebuffers) |framebuffer| {
-        vkDestroyFramebuffer(self.device, framebuffer, null);
-    }
-    self.allocator.free(self.swap_chain_framebuffers);
-
-    vkDestroyRenderPass(self.device, self.render_pass, null);
-    self.swap_chain.deinit(self.device);
-}
-
-pub fn createCommandBuffers(self: Self) ![]VkCommandBuffer {
-    var buffers = try self.allocator.alloc(VkCommandBuffer, self.swap_chain_framebuffers.len);
-    errdefer self.allocator.free(buffers);
+pub fn createCommandBuffers(device: VkDevice, commandpool: VkCommandPool, allocator: *Allocator, len: usize) ![]VkCommandBuffer {
+    var buffers = try allocator.alloc(VkCommandBuffer, len);
+    errdefer allocator.free(buffers);
 
     const alloc_info = VkCommandBufferAllocateInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .pNext = null,
-        .commandPool = self.command_pool,
+        .commandPool = commandpool,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = @intCast(u32, buffers.len),
     };
 
-    try allocateCommandBuffers(self.device, &alloc_info, buffers.ptr);
+    try allocateCommandBuffers(device, &alloc_info, buffers.ptr);
 
     return buffers;
 }
@@ -275,8 +269,8 @@ const VulkanSynchronization = struct {
         for (self.in_flight_fences) |fence| {
             vkDestroyFence(device, fence, null);
         }
-        self.allocator.free(self.in_flight_fences);
 
+        self.allocator.free(self.in_flight_fences);
         self.allocator.free(self.images_in_flight);
     }
 };
@@ -347,14 +341,14 @@ fn isDeviceSuitable(allocator: *Allocator, device: VkPhysicalDevice, surface: Vk
     const indices = try findQueueFamilies(allocator, device, surface);
     const extensions_supported = try checkDeviceExtensionSupport(allocator, device);
 
-    var swap_chain_adequate = false;
+    var swapchain_adequate = false;
     if (extensions_supported) {
-        const swap_chain_support = try SwapChain.querySwapChainSupport(allocator, device, surface);
-        defer swap_chain_support.deinit();
-        swap_chain_adequate = swap_chain_support.formats.len != 0 and swap_chain_support.present_modes.len != 0;
+        const swapchain_support = try SwapChain.querySwapChainSupport(allocator, device, surface);
+        defer swapchain_support.deinit();
+        swapchain_adequate = swapchain_support.formats.len != 0 and swapchain_support.present_modes.len != 0;
     }
 
-    return indices.isComplete() and extensions_supported and swap_chain_adequate;
+    return indices.isComplete() and extensions_supported and swapchain_adequate;
 }
 
 fn checkDeviceExtensionSupport(allocator: *Allocator, device: VkPhysicalDevice) !bool {
@@ -505,105 +499,6 @@ pub fn createShaderModule(device: VkDevice, code: []align(@alignOf(u32)) const u
     );
 
     return shader_module;
-}
-
-fn createRenderPass(
-    device: VkDevice,
-    swap_chain_image_format: VkFormat,
-    swap_chain_extent: VkExtent2D,
-) !VkRenderPass {
-    _ = swap_chain_extent;
-
-    const color_attachment = VkAttachmentDescription{
-        .flags = 0,
-        .format = swap_chain_image_format,
-        .samples = VK_SAMPLE_COUNT_1_BIT,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-    };
-
-    const color_attachment_ref = VkAttachmentReference{
-        .attachment = 0,
-        .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    };
-
-    const subpass = VkSubpassDescription{
-        .flags = 0,
-        .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-        .colorAttachmentCount = 1,
-        .pColorAttachments = &color_attachment_ref,
-        .inputAttachmentCount = 0,
-        .pInputAttachments = null,
-        .pResolveAttachments = null,
-        .pDepthStencilAttachment = null,
-        .preserveAttachmentCount = 0,
-        .pPreserveAttachments = null,
-    };
-
-    const dependency = VkSubpassDependency{
-        .srcSubpass = VK_SUBPASS_EXTERNAL,
-        .dstSubpass = 0,
-        .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        .srcAccessMask = 0,
-        .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        .dependencyFlags = 0,
-    };
-
-    var render_pass: VkRenderPass = undefined;
-    const render_pass_info = VkRenderPassCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .attachmentCount = 1,
-        .pAttachments = &color_attachment,
-        .subpassCount = 1,
-        .pSubpasses = &subpass,
-        .dependencyCount = 1,
-        .pDependencies = &dependency,
-    };
-    try checkSuccess(
-        vkCreateRenderPass(device, &render_pass_info, null, &render_pass),
-        error.VulkanRenderPassCreationFailed,
-    );
-
-    return render_pass;
-}
-
-fn createFramebuffers(
-    allocator: *Allocator,
-    device: VkDevice,
-    render_pass: VkRenderPass,
-    swap_chain: SwapChain,
-) ![]VkFramebuffer {
-    var framebuffers = try allocator.alloc(VkFramebuffer, swap_chain.image_views.len);
-    errdefer allocator.free(framebuffers);
-
-    for (swap_chain.image_views) |image_view, i| {
-        var attachments = [_]VkImageView{image_view};
-        const frame_buffer_info = VkFramebufferCreateInfo{
-            .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-            .pNext = null,
-            .flags = 0,
-            .renderPass = render_pass,
-            .attachmentCount = 1,
-            .pAttachments = &attachments,
-            .width = swap_chain.extent.width,
-            .height = swap_chain.extent.height,
-            .layers = 1,
-        };
-
-        try checkSuccess(
-            vkCreateFramebuffer(device, &frame_buffer_info, null, &framebuffers[i]),
-            error.VulkanFramebufferCreationFailed,
-        );
-    }
-
-    return framebuffers;
 }
 
 fn createCommandPool(device: VkDevice, indices: QueueFamilyIndices) !VkCommandPool {

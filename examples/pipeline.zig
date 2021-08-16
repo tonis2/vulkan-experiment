@@ -60,7 +60,7 @@ pub const Vertex = struct {
 layout: VkPipelineLayout,
 pipeline: VkPipeline,
 
-pub fn init(ctx: Context) !Self {
+pub fn init(ctx: Context, renderPass: VkRenderPass) !Self {
     const vert_code align(4) = @embedFile("../vert.spv").*;
     const frag_code align(4) = @embedFile("../frag.spv").*;
 
@@ -115,15 +115,15 @@ pub fn init(ctx: Context) !Self {
     const viewport = VkViewport{
         .x = 0.0,
         .y = 0.0,
-        .width = @intToFloat(f32, ctx.vulkan.swap_chain.extent.width),
-        .height = @intToFloat(f32, ctx.vulkan.swap_chain.extent.height),
+        .width = @intToFloat(f32, ctx.vulkan.swapchain.extent.width),
+        .height = @intToFloat(f32, ctx.vulkan.swapchain.extent.height),
         .minDepth = 0.0,
         .maxDepth = 1.0,
     };
 
     const scissor = VkRect2D{
         .offset = VkOffset2D{ .x = 0, .y = 0 },
-        .extent = ctx.vulkan.swap_chain.extent,
+        .extent = ctx.vulkan.swapchain.extent,
     };
 
     const viewport_state = VkPipelineViewportStateCreateInfo{
@@ -232,7 +232,7 @@ pub fn init(ctx: Context) !Self {
         .pDynamicState = null,
         .pTessellationState = null,
         .layout = pipeline_layout,
-        .renderPass = ctx.vulkan.render_pass,
+        .renderPass = renderPass,
         .subpass = 0,
         .basePipelineHandle = null,
         .basePipelineIndex = -1,
@@ -249,7 +249,7 @@ pub fn init(ctx: Context) !Self {
     };
 }
 
-pub fn deinit(self: Self, device: VkDevice) void {
-    vkDestroyPipeline(device, self.pipeline, null);
-    vkDestroyPipelineLayout(device, self.layout, null);
+pub fn deinit(self: Self, ctx: Context) void {
+    vkDestroyPipeline(ctx.vulkan.device, self.pipeline, null);
+    vkDestroyPipelineLayout(ctx.vulkan.device, self.layout, null);
 }

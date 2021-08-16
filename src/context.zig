@@ -3,16 +3,19 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Vulkan = @import("vulkan.zig");
 const Window = @import("window.zig");
+const SwapChain = @import("swapchain.zig");
 
 usingnamespace @import("c.zig");
 usingnamespace @import("utils.zig");
 
 const Self = @This();
 
+
 window: Window,
 vulkan: Vulkan,
 current_frame: usize,
-framebuffer_resized: bool,
+allocator: *Allocator,
+
 
 pub fn init(allocator: *Allocator) !Self {
     const window = try Window.init();
@@ -21,12 +24,14 @@ pub fn init(allocator: *Allocator) !Self {
     var vulkan = try Vulkan.init(allocator, window);
     errdefer vulkan.deinit();
 
-    return Self{
+    var ctx = Self{
         .vulkan = vulkan,
         .window = window,
         .current_frame = 0,
-        .framebuffer_resized = false,
+        .allocator = allocator,
     };
+
+    return ctx;
 }
 
 pub fn deinit(self: Self) void {
@@ -57,7 +62,7 @@ pub fn drawFrame(self: *Self, command_buffers: []VkCommandBuffer) !void {
     {
         const result = vkAcquireNextImageKHR(
             vulkan.device,
-            vulkan.swap_chain.swap_chain,
+            vulkan.swapchain.swapchain,
             MAX_UINT64,
             vulkan.sync.image_available_semaphores[current_frame],
             null,
@@ -65,7 +70,7 @@ pub fn drawFrame(self: *Self, command_buffers: []VkCommandBuffer) !void {
         );
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             // swap chain cannot be used (e.g. due to window resize)
-            // try vulkan.recreateSwapChain(window);
+            try self.recreateSwapChain();
             return;
         } else if (result != VK_SUCCESS and result != VK_SUBOPTIMAL_KHR) {
             return error.VulkanSwapChainAcquireNextImageFailure;
@@ -106,75 +111,37 @@ pub fn drawFrame(self: *Self, command_buffers: []VkCommandBuffer) !void {
 
     try Vulkan.queueSubmit(vulkan.graphics_queue, 1, &submit_info, vulkan.sync.in_flight_fences[current_frame]);
 
-    const swap_chains = [_]VkSwapchainKHR{vulkan.swap_chain.swap_chain};
+    const swapchains = [_]VkSwapchainKHR{vulkan.swapchain.swapchain};
     const present_info = VkPresentInfoKHR{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .pNext = null,
         .waitSemaphoreCount = 1,
         .pWaitSemaphores = &signal_semaphores,
         .swapchainCount = 1,
-        .pSwapchains = &swap_chains,
+        .pSwapchains = &swapchains,
         .pImageIndices = &image_index,
         .pResults = null,
     };
 
     {
         const result = vkQueuePresentKHR(vulkan.present_queue, &present_info);
-        if (result == VK_ERROR_OUT_OF_DATE_KHR or result == VK_SUBOPTIMAL_KHR or self.framebuffer_resized) {
-            self.framebuffer_resized = false;
-            // try vulkan.recreateSwapChain(window);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR or result == VK_SUBOPTIMAL_KHR) {
+            try self.recreateSwapChain();
         } else if (result != VK_SUCCESS) {
             return error.VulkanQueuePresentFailure;
         }
     }
+    
 }
 
-// pub fn recreateSwapChain(self: *Self, window: *const Window) !void {
-//     while (window.isMinimized()) {
-//         window.waitEvents();
-//     }
-
-//     try checkSuccess(vkDeviceWaitIdle(self.device), error.VulkanDeviceWaitIdleFailure);
-
-//     self.cleanUpSwapChain();
-
-//     self.vulkan.swap_chain = try SwapChain.init(
-//         self.allocator,
-//         self.physical_device,
-//         self.device,
-//         window,
-//         self.surface,
-//         self.queue_family_indices,
-//     );
-
-//     self.render_pass = try createRenderPass(
-//         self.device,
-//         self.swap_chain.image_format,
-//         self.swap_chain.extent,
-//     );
-
-//     self.pipeline = try Pipeline.init(
-//         self.device,
-//         self.render_pass,
-//         self.swap_chain.extent,
-//     );
-
-//     self.swap_chain_framebuffers = try createFramebuffers(
-//         self.allocator,
-//         self.device,
-//         self.render_pass,
-//         self.swap_chain,
-//     );
-
-//     self.command_buffers = try createCommandBuffers(
-//         self.allocator,
-//         self.device,
-//         self.render_pass,
-//         self.command_pool,
-//         self.swap_chain_framebuffers,
-//         self.swap_chain.extent,
-//         self.pipeline.pipeline,
-//         self.vertex_buffer,
-//         self.index_buffer,
-//     );
-// }
+pub fn recreateSwapChain(self: *Self) !void {
+    self.vulkan.swapchain.deinit(self.vulkan.device);
+    self.vulkan.swapchain = try SwapChain.init(
+        self.allocator,
+        self.vulkan.physical_device,
+        self.vulkan.device,
+        self.vulkan.surface,
+        self.window,
+        self.vulkan.queue_family_indices,
+    );
+}

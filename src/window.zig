@@ -36,10 +36,10 @@ pub fn deinit(self: *const Self) void {
     glfwTerminate();
 }
 
-pub fn registerResizeCallback(self: *Self, callback: *ResizeCallback) void {
-    glfwSetWindowUserPointer(self.window, callback);
-    _ = glfwSetFramebufferSizeCallback(self.window, framebufferResizeCallback);
-}
+// pub fn registerResizeCallback(self: *Self, callback: *ResizeCallback) void {
+//     glfwSetWindowUserPointer(self.window, callback);
+//     _ = glfwSetFramebufferSizeCallback(self.window, framebufferResizeCallback);
+// }
 
 pub fn pollEvents(self: *const Self) void {
     _ = self;

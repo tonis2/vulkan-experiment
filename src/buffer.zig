@@ -68,9 +68,9 @@ pub fn Buffer(comptime T: type, usage: c_int) type {
             };
         }
 
-        pub fn deinit(self: Self, device: VkDevice) void {
-            vkDestroyBuffer(device, self.buffer, null);
-            vkFreeMemory(device, self.memory, null);
+        pub fn deinit(self: Self, ctx: Context) void {
+            vkDestroyBuffer(ctx.vulkan.device, self.buffer, null);
+            vkFreeMemory(ctx.vulkan.device, self.memory, null);
         }
     };
 }

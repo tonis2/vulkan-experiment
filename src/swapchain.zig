@@ -10,7 +10,7 @@ const QueueFamilyIndices = @import("vulkan.zig").QueueFamilyIndices;
 const Self = @This();
 
 allocator: *Allocator,
-swap_chain: VkSwapchainKHR,
+swapchain: VkSwapchainKHR,
 images: []VkImage,
 image_format: VkFormat,
 extent: VkExtent2D,
@@ -20,19 +20,19 @@ pub fn init(
     allocator: *Allocator,
     physical_device: VkPhysicalDevice,
     logical_device: VkDevice,
-    window: Window,
     surface: VkSurfaceKHR,
+    window: Window,
     indices: QueueFamilyIndices,
 ) !Self {
-    const swap_chain_support = try querySwapChainSupport(allocator, physical_device, surface);
-    defer swap_chain_support.deinit();
+    const swapchain_support = try querySwapChainSupport(allocator, physical_device, surface);
+    defer swapchain_support.deinit();
 
-    const surface_format = chooseSwapSurfaceFormat(swap_chain_support.formats);
-    const present_mode = chooseSwapPresentMode(swap_chain_support.present_modes);
-    const extent = chooseSwapExtent(window, swap_chain_support.capabilities);
-    const capabilities = swap_chain_support.capabilities;
+    const surface_format = chooseSwapSurfaceFormat(swapchain_support.formats);
+    const present_mode = chooseSwapPresentMode(swapchain_support.present_modes);
+    const extent = chooseSwapExtent(window, swapchain_support.capabilities);
+    const capabilities = swapchain_support.capabilities;
 
-    const swap_chain = try createSwapChain(
+    const swapchain = try createSwapChain(
         logical_device,
         surface,
         indices,
@@ -41,14 +41,15 @@ pub fn init(
         present_mode,
         extent,
     );
+    
     var image_count: u32 = 0;
     try checkSuccess(
-        vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, null),
+        vkGetSwapchainImagesKHR(logical_device, swapchain, &image_count, null),
         error.VulkanSwapChainImageRetrievalFailed,
     );
     var images = try allocator.alloc(VkImage, image_count);
     try checkSuccess(
-        vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, images.ptr),
+        vkGetSwapchainImagesKHR(logical_device, swapchain, &image_count, images.ptr),
         error.VulkanSwapChainImageRetrievalFailed,
     );
 
@@ -61,7 +62,7 @@ pub fn init(
 
     return Self{
         .allocator = allocator,
-        .swap_chain = swap_chain,
+        .swapchain = swapchain,
         .images = images,
         .image_format = surface_format.format,
         .extent = extent,
@@ -75,7 +76,7 @@ pub fn deinit(self: Self, logical_device: VkDevice) void {
         vkDestroyImageView(logical_device, view, null);
     }
     self.allocator.free(self.image_views);
-    vkDestroySwapchainKHR(logical_device, self.swap_chain, null);
+    vkDestroySwapchainKHR(logical_device, self.swapchain, null);
 }
 
 const SwapChainSupportDetails = struct {
@@ -238,13 +239,13 @@ fn createSwapChain(
 
     // TODO There seems to be a race condition here, since the validation layer reports errors during resizing,
     // caused by a mismatch between extents.
-    var swap_chain: VkSwapchainKHR = undefined;
+    var swapchain: VkSwapchainKHR = undefined;
     try checkSuccess(
-        vkCreateSwapchainKHR(logical_device, &create_info, null, &swap_chain),
+        vkCreateSwapchainKHR(logical_device, &create_info, null, &swapchain),
         error.VulkanSwapChainCreationFailed,
     );
 
-    return swap_chain;
+    return swapchain;
 }
 
 fn createImageViews(
