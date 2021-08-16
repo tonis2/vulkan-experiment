@@ -5,7 +5,7 @@ const Pkg = std.build.Pkg;
 const FileSource = std.build.FileSource;
 
 const examples = [_][2][]const u8{
-    .{ "main", "examples/main.zig" },
+    .{ "main", "examples/basic/main.zig" },
 };
 
 pub fn build(b: *Builder) void {
@@ -18,7 +18,10 @@ pub fn build(b: *Builder) void {
     // Standard release options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
+
     const Vulkan = Pkg{ .name = "vulkan", .path = FileSource{ .path = "src/vulkan.zig" } };
+    const Zalgebra = Pkg{ .name = "zalgebra", .path = FileSource{ .path = "dependencies/zalgebra/src/main.zig" } };
+
     for (examples) |example| {
         const name = example[0];
         const path = example[1];
@@ -31,6 +34,7 @@ pub fn build(b: *Builder) void {
         exe.linkSystemLibrary("glfw");
         exe.linkSystemLibrary("vulkan");
         exe.addPackage(Vulkan);
+        exe.addPackage(Zalgebra);
         exe.install();
 
         const run_cmd = exe.run();

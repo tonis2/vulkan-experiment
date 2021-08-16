@@ -38,6 +38,7 @@ swapchain: SwapChain,
 command_pool: VkCommandPool,
 commandbuffers: []VkCommandBuffer,
 debug_messenger: ?VkDebugUtilsMessengerEXT,
+descriptorPool: VkDescriptorPool,
 window: Window,
 
 // TODO: use errdefer to clean up stuff in case of errors
@@ -94,6 +95,7 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
 
     const physical_device = try pickPhysicalDevice(allocator, instance, surface);
     const indices = try findQueueFamilies(allocator, physical_device, surface);
+
     if (!indices.isComplete()) {
         return error.VulkanSuitableQueuFamiliesNotFound;
     }
@@ -101,6 +103,7 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
     const device = try createLogicalDevice(allocator, physical_device, indices);
 
     var graphics_queue: VkQueue = undefined;
+
     vkGetDeviceQueue(
         device,
         indices.graphics_family.?,
@@ -109,6 +112,7 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
     );
 
     var present_queue: VkQueue = undefined;
+
     vkGetDeviceQueue(
         device,
         indices.present_family.?,
@@ -127,6 +131,7 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
 
     const command_pool = try createCommandPool(device, indices);
     const commandbuffers = try createCommandBuffers(device, command_pool, allocator, swapchain.images.len);
+    const descriptorPool = try createDescriptorPool(@intCast(u32, swapchain.images.len), device);
 
     return Self{
         .allocator = allocator,
@@ -140,6 +145,7 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
         .swapchain = swapchain,
         .command_pool = command_pool,
         .commandbuffers = commandbuffers,
+        .descriptorPool = descriptorPool,
         .window = window,
         .debug_messenger = debug_messenger,
     };
@@ -161,11 +167,14 @@ pub fn deinit(self: Self) void {
     );
     self.allocator.free(self.commandbuffers);
 
+    vkDestroyDescriptorPool(self.device, self.descriptorPool, null);
     vkDestroyCommandPool(self.device, self.command_pool, null);
     vkDestroyDevice(self.device, null);
+
     if (self.debug_messenger) |messenger| {
         dbg.deinitDebugMessenger(self.instance, messenger);
     }
+
     vkDestroySurfaceKHR(self.instance, self.surface, null);
     vkDestroyInstance(self.instance, null);
 }
@@ -479,6 +488,33 @@ fn createFence(device: VkDevice) !VkFence {
     return fence;
 }
 
+fn createDescriptorPool(size: u32, device: VkDevice) !VkDescriptorPool {
+    const poolSizeUniform = VkDescriptorPoolSize{
+        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = size,
+    };
+
+    const poolSizeSampler = VkDescriptorPoolSize{
+        .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = size,
+    };
+
+    const poolSizes = [_]VkDescriptorPoolSize{ poolSizeUniform, poolSizeSampler };
+
+    const poolInfo = VkDescriptorPoolCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .poolSizeCount = poolSizes.len,
+        .pPoolSizes = &poolSizes,
+        .maxSets = size,
+        .pNext = null,
+        .flags = 0,
+    };
+
+    var descriptorPool: VkDescriptorPool = undefined;
+    try checkSuccess(vkCreateDescriptorPool(device, &poolInfo, null, &descriptorPool), error.VulkanDescriptorPoolFailed);
+    return descriptorPool;
+}
+
 pub const QueueFamilyIndices = struct {
     graphics_family: ?u32,
     present_family: ?u32,
@@ -601,7 +637,6 @@ pub const Synchronization = struct {
     }
 
     pub fn drawFrame(self: *Synchronization, commandBuffers: []VkCommandBuffer) !void {
-
         try checkSuccess(
             vkWaitForFences(self.vulkan.device, 1, &self.in_flight_fences[self.currentFrame], VK_TRUE, MAX_UINT64),
             error.VulkanWaitForFencesFailure,

@@ -1,66 +1,53 @@
 const Vulkan = @import("vulkan");
 
+usingnamespace @import("zalgebra");
 usingnamespace Vulkan.C;
 usingnamespace Vulkan.Utils;
 
 const Self = @This();
 
-pub const Vec2 = struct {
-    x: f32,
-    y: f32,
-
-    pub fn new(x: f32, y: f32) Vec2 {
-        return Vec2{
-            .x = x,
-            .y = y,
-        };
-    }
-};
-
-pub const Vec3 = struct {
-    x: f32,
-    y: f32,
-    z: f32,
-
-    pub fn new(x: f32, y: f32, z: f32) Vec3 {
-        return Vec3{ .x = x, .y = y, .z = z };
-    }
-};
-
 pub const Vertex = struct {
     pos: Vec2,
     color: Vec3,
+};
 
-    pub fn getBindingDescription() VkVertexInputBindingDescription {
-        return VkVertexInputBindingDescription{
-            .binding = 0,
-            .stride = @sizeOf(Vertex),
-            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-        };
-    }
-
-    pub fn getAttributeDescriptions() [2]VkVertexInputAttributeDescription {
-        return [2]VkVertexInputAttributeDescription{
-            VkVertexInputAttributeDescription{
-                .binding = 0,
-                .location = 0,
-                .format = VK_FORMAT_R32G32_SFLOAT,
-                .offset = @offsetOf(Vertex, "pos"),
-            },
-            VkVertexInputAttributeDescription{
-                .binding = 0,
-                .location = 1,
-                .format = VK_FORMAT_R32G32B32_SFLOAT,
-                .offset = @offsetOf(Vertex, "color"),
-            },
-        };
-    }
+const UniformBufferObject = extern struct {
+    model: Mat4,
+    view: Mat4,
+    proj: Mat4,
 };
 
 layout: VkPipelineLayout,
 pipeline: VkPipeline,
+descriptorLayout: VkDescriptorSetLayout,
 
 pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
+
+    // Descriptors
+    const UBOlayout = VkDescriptorSetLayoutBinding{
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .pImmutableSamplers = null,
+    };
+
+    const descriptorBindings = [_]VkDescriptorSetLayoutBinding{UBOlayout};
+    const descriptorInfo = VkDescriptorSetLayoutCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = descriptorBindings.len,
+        .pBindings = &descriptorBindings,
+        .pNext = null,
+        .flags = 0,
+    };
+
+    var descriptorLayout: VkDescriptorSetLayout = undefined;
+
+    try checkSuccess(
+        vkCreateDescriptorSetLayout(vulkan.device, &descriptorInfo, null, &descriptorLayout),
+        error.VulkanPipelineLayoutCreationFailed,
+    );
+
     const vert_code align(4) = @embedFile("./vert.spv").*;
     const frag_code align(4) = @embedFile("./frag.spv").*;
 
@@ -92,8 +79,25 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
 
     const shader_stages = [_]VkPipelineShaderStageCreateInfo{ vert_stage_info, frag_stage_info };
 
-    const binding_desc = Vertex.getBindingDescription();
-    const attr_descs = Vertex.getAttributeDescriptions();
+    const binding_desc = VkVertexInputBindingDescription{
+        .binding = 0,
+        .stride = @sizeOf(Vertex),
+        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+    const attr_descs = [2]VkVertexInputAttributeDescription{
+        VkVertexInputAttributeDescription{
+            .binding = 0,
+            .location = 0,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = @offsetOf(Vertex, "pos"),
+        },
+        VkVertexInputAttributeDescription{
+            .binding = 0,
+            .location = 1,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = @offsetOf(Vertex, "color"),
+        },
+    };
     const vertex_input_info = VkPipelineVertexInputStateCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .pNext = null,
@@ -247,10 +251,12 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
     return Self{
         .layout = pipeline_layout,
         .pipeline = pipeline,
+        .descriptorLayout = descriptorLayout,
     };
 }
 
 pub fn deinit(self: Self, vulkan: Vulkan) void {
     vkDestroyPipeline(vulkan.device, self.pipeline, null);
     vkDestroyPipelineLayout(vulkan.device, self.layout, null);
+    vkDestroyDescriptorSetLayout(vulkan.device, self.descriptorLayout, null);
 }
