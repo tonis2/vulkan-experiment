@@ -62,7 +62,7 @@ pub fn main() !void {
         context.deinit();
     }
 
-    while (!context.shouldClose()) {
+    while (!window.shouldClose()) {
         for (context.vulkan.commandbuffers) |buffer, i| {
             const begin_info = VkCommandBufferBeginInfo{
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,

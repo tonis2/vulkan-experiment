@@ -41,9 +41,6 @@ pub fn renderFrame(self: *Self, command_buffers: []VkCommandBuffer) !void {
     self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-pub fn shouldClose(self: Self) bool {
-    return self.window.shouldClose();
-}
 
 pub fn drawFrame(self: *Self, command_buffers: []VkCommandBuffer) !void {
     var vulkan = &self.vulkan;
