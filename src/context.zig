@@ -17,10 +17,7 @@ current_frame: usize,
 allocator: *Allocator,
 
 
-pub fn init(allocator: *Allocator) !Self {
-    const window = try Window.init();
-    errdefer window.deinit();
-
+pub fn init(allocator: *Allocator, window: Window) !Self {
     var vulkan = try Vulkan.init(allocator, window);
     errdefer vulkan.deinit();
 
@@ -36,7 +33,6 @@ pub fn init(allocator: *Allocator) !Self {
 
 pub fn deinit(self: Self) void {
     self.vulkan.deinit();
-    self.window.deinit();
 }
 
 pub fn renderFrame(self: *Self, command_buffers: []VkCommandBuffer) !void {

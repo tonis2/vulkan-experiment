@@ -5,6 +5,7 @@ const log = std.log;
 const Vulkan = @import("vulkan");
 const Context = Vulkan.Context;
 const Buffer = Vulkan.Buffer;
+const Window = Vulkan.Window;
 
 usingnamespace Vulkan.C;
 usingnamespace Vulkan.Utils;
@@ -42,12 +43,13 @@ pub fn main() !void {
 
     defer std.debug.assert(!gpa.deinit());
 
-    var context = try Context.init(allocator);
-    defer context.deinit();
+    const window = try Window.init(1400, 900);
+    errdefer window.deinit();
+    var context = try Context.init(allocator, window);
 
     const renderpass = try Renderpass.init(context);
     const pipeline = try Pipeline.init(context, renderpass.renderpass);
-  
+
     const vertex_buffer = try Buffer(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(context, &vertices);
     const index_buffer = try Buffer(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(context, &v_indices);
 
@@ -56,6 +58,8 @@ pub fn main() !void {
         index_buffer.deinit(context);
         renderpass.deinit(context);
         pipeline.deinit(context);
+        window.deinit();
+        context.deinit();
     }
 
     while (!context.shouldClose()) {

@@ -3,9 +3,6 @@ const std = @import("std");
 usingnamespace @import("c.zig");
 usingnamespace @import("utils.zig");
 
-const WIDTH = 1200;
-const HEIGHT = 800;
-
 pub const ResizeCallback = struct {
     data: *c_void,
     cb: fn (*c_void) void,
@@ -15,18 +12,15 @@ const Self = @This();
 
 window: *GLFWwindow,
 
-pub fn init() !Self {
+pub fn init(width: u32, height: u32) !Self {
     const init_result = glfwInit();
-    if (init_result == GLFW_FALSE) {
-        return error.GLFWInitializationFailed;
-    }
+    if (init_result == GLFW_FALSE) return error.GLFWInitializationFailed;
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-    const window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan window", null, null);
-    if (window == null) {
-        return error.GLFWInitializationFailed;
-    }
+    const window = glfwCreateWindow(@intCast(c_int, width), @intCast(c_int, height), "Vulkan window", null, null);
+
+    if (window == null) return error.GLFWInitializationFailed;
 
     return Self{ .window = window.? };
 }
