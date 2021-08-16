@@ -28,14 +28,14 @@ const vertices = [_]Vertex{
 
 const v_indices = [_]u16{ 0, 1, 2, 2, 3, 0 };
 
-fn resize(ctx: Context) !void {
-    while (ctx.window.isMinimized()) {
-        ctx.window.waitEvents();
-    }
+// fn resize(ctx: Context) !void {
+//     while (ctx.window.isMinimized()) {
+//         ctx.window.waitEvents();
+//     }
 
-    try checkSuccess(vkDeviceWaitIdle(ctx.vulkan.device), error.VulkanDeviceWaitIdleFailure);
-    ctx.recreateSwapChain();
-}
+//     try checkSuccess(vkDeviceWaitIdle(ctx.vulkan.device), error.VulkanDeviceWaitIdleFailure);
+//     ctx.recreateSwapChain();
+// }
 
 pub fn main() !void {
     const allocator = &gpa.allocator;
