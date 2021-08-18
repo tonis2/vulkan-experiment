@@ -1,4 +1,5 @@
 const Vulkan = @import("vulkan");
+const Buffer = Vulkan.Buffer;
 
 usingnamespace @import("zalgebra");
 usingnamespace Vulkan.C;
@@ -11,10 +12,18 @@ pub const Vertex = struct {
     color: Vec3,
 };
 
-const UniformBufferObject = extern struct {
-    model: Mat4,
+const Camera = struct {
+    position: Vec4,
     view: Mat4,
     proj: Mat4,
+
+    pub fn new(eye: Vec3, focus: Vec3, aspect: f32, min: f32, max: f32) Camera {
+        return Camera{
+            .position = eye,
+            .view = Mat4.lookAt(eye, focus, Vec3.new(0.0, 1.0, 0.0)),
+            .proj = Mat4.perspective(45.0, aspect, min, max),
+        };
+    }
 };
 
 layout: VkPipelineLayout,
@@ -24,7 +33,7 @@ descriptorLayout: VkDescriptorSetLayout,
 pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
 
     // Descriptors
-    const UBOlayout = VkDescriptorSetLayoutBinding{
+    const CameraBufferLayout = VkDescriptorSetLayoutBinding{
         .binding = 0,
         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = 1,
@@ -32,11 +41,41 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
         .pImmutableSamplers = null,
     };
 
-    const descriptorBindings = [_]VkDescriptorSetLayoutBinding{UBOlayout};
+    // const camera = Camera.new(Vec3.new(0.0, 0.0, 10.0), Vec3.new(0.0, 0.0, 0.0), 15.0, 0.1, 20.0);
+    // const CameraBuffer = try Buffer(Camera, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT).init(vulkan, &camera);
+
+    // var descriptorSet: vKDescriptorSet = undefined;
+    // const descriptorWriteUniform = VkWriteDescriptorSet{
+    //     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+    //     .dstSet = descriptorSet,
+    //     .dstBinding = 0,
+    //     .dstArrayElement = 0,
+    //     .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    //     .descriptorCount = 1,
+    //     .pBufferInfo = &VkDescriptorBufferInfo{
+    //         .buffer = CameraBuffer,
+    //         .offset = 0,
+    //         .range = @sizeOf(Camera),
+    //     },
+    //     .pImageInfo = null,
+    //     .pTexelBufferView = null,
+    //     .pNext = null,
+    // };
+
+    // const descriptorAllocation = VkDescriptorSetAllocateInfo{
+    //     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+    //     .descriptorPool = vulkan.descriptorPool,
+    //     .descriptorSetCount = 1,
+    //     .pSetLayouts = &CameraBufferLayout,
+    //     .pNext = null,
+    // };
+
+    // try checkSuccess(vkAllocateDescriptorSets(vulkan.device, &descriptorAllocation, descriptorSet), error.DescriptorAllocationFailed);
+
     const descriptorInfo = VkDescriptorSetLayoutCreateInfo{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = descriptorBindings.len,
-        .pBindings = &descriptorBindings,
+        .bindingCount = 1,
+        .pBindings = &[_]VkDescriptorSetLayoutBinding{CameraBufferLayout},
         .pNext = null,
         .flags = 0,
     };
@@ -47,6 +86,12 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
         vkCreateDescriptorSetLayout(vulkan.device, &descriptorInfo, null, &descriptorLayout),
         error.VulkanPipelineLayoutCreationFailed,
     );
+
+    // const descriptorWrites = [_]VkWriteDescriptorSet{descriptorWriteUniform};
+
+    // vkUpdateDescriptorSets(self.device, descriptorWrites.len, &descriptorWrites, 0, null);
+
+    // Pipeline
 
     const vert_code align(4) = @embedFile("./vert.spv").*;
     const frag_code align(4) = @embedFile("./frag.spv").*;

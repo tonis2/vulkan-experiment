@@ -6,4 +6,6 @@ Tested on Linux and zig version `0.9.0 dev`
 
 Requires dependencies `vulkan` and `glfw`
 
-To run use `zig build main`
+Clone this repo using `--recursive` to also download zalgebra as dependecy
+
+To run use `zig build basic`

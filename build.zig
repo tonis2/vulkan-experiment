@@ -5,7 +5,7 @@ const Pkg = std.build.Pkg;
 const FileSource = std.build.FileSource;
 
 const examples = [_][2][]const u8{
-    .{ "main", "examples/basic/main.zig" },
+    .{ "basic", "examples/basic/main.zig" },
 };
 
 pub fn build(b: *Builder) void {

@@ -6,7 +6,6 @@ usingnamespace @import("utils.zig");
 
 const Vulkan = @import("vulkan.zig");
 
-
 pub fn Buffer(comptime T: type, usage: c_int) type {
     return struct {
         const Self = @This();
@@ -23,6 +22,7 @@ pub fn Buffer(comptime T: type, usage: c_int) type {
 
             var staging_buffer: VkBuffer = undefined;
             var staging_memory: VkDeviceMemory = undefined;
+
             try createBuffer(
                 vulkan.physical_device,
                 vulkan.device,
@@ -32,6 +32,7 @@ pub fn Buffer(comptime T: type, usage: c_int) type {
                 &staging_buffer,
                 &staging_memory,
             );
+
             defer {
                 vkDestroyBuffer(vulkan.device, staging_buffer, null);
                 vkFreeMemory(vulkan.device, staging_memory, null);
@@ -182,3 +183,7 @@ pub fn createBuffer(
 
     try checkSuccess(vkBindBufferMemory(device, buffer.*, buffer_memory.*, 0), error.VulkanBindBufferMemoryFailure);
 }
+
+// pub const Descriptor = struct {
+
+// };
