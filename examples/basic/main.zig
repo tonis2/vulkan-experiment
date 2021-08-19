@@ -20,13 +20,13 @@ pub const log_level = .warn;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
 pub const Camera = struct {
-    position: Vec3,
+    position: Vec4,
     view: Mat4,
     proj: Mat4,
 
     pub fn new(eye: Vec3, focus: Vec3, aspect: f32, min: f32, max: f32) Camera {
         return Camera{
-            .position = eye,
+            .position = Vec4.new(eye.x, eye.y, eye.z, 0.0),
             .view = Mat4.lookAt(eye, focus, Vec3.new(0.0, 1.0, 0.0)),
             .proj = Mat4.perspective(45.0, aspect, min, max),
         };
@@ -69,8 +69,8 @@ pub fn main() !void {
     const renderpass = try Renderpass.init(vulkan);
     const pipeline = try Pipeline.init(vulkan, renderpass.renderpass, camera);
 
-    const vertex_buffer = try Buffer(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(vulkan, &vertices);
-    const index_buffer = try Buffer(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(vulkan, &v_indices);
+    const vertex_buffer = try Buffer.From(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(vulkan, &vertices);
+    const index_buffer = try Buffer.From(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(vulkan, &v_indices);
 
     defer {
         vertex_buffer.deinit(vulkan);
@@ -117,6 +117,7 @@ pub fn main() !void {
             const offsets = [_]VkDeviceSize{0};
             vkCmdBindVertexBuffers(buffer, 0, 1, &vertex_buffers, &offsets);
             vkCmdBindIndexBuffer(buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+            // vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &pipeline.descriptorSets, 0, null);
             vkCmdDrawIndexed(buffer, @intCast(u32, index_buffer.len), 1, 0, 0, 0);
             vkCmdEndRenderPass(buffer);
 

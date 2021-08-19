@@ -8,7 +8,7 @@ const log = std.log;
 
 pub const SwapChain = @import("swapchain.zig");
 pub const Window = @import("window.zig");
-pub const Buffer = @import("buffer.zig").Buffer;
+pub const Buffer = @import("buffer.zig");
 pub const C = @import("c.zig");
 pub const Utils = @import("utils.zig");
 pub const ResizeCallback = Window.ResizeCallback;

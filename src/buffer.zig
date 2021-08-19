@@ -6,7 +6,7 @@ usingnamespace @import("utils.zig");
 
 const Vulkan = @import("vulkan.zig");
 
-pub fn Buffer(comptime T: type, usage: c_int) type {
+pub fn From(comptime T: type, usage: c_int) type {
     return struct {
         const Self = @This();
 
