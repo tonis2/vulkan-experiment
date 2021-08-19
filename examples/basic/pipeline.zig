@@ -6,33 +6,24 @@ usingnamespace Vulkan.C;
 usingnamespace Vulkan.Utils;
 
 const Self = @This();
+const Camera = @import("main.zig").Camera;
 
 pub const Vertex = struct {
     pos: Vec2,
     color: Vec3,
 };
 
-const Camera = struct {
-    position: Vec4,
-    view: Mat4,
-    proj: Mat4,
-
-    pub fn new(eye: Vec3, focus: Vec3, aspect: f32, min: f32, max: f32) Camera {
-        return Camera{
-            .position = eye,
-            .view = Mat4.lookAt(eye, focus, Vec3.new(0.0, 1.0, 0.0)),
-            .proj = Mat4.perspective(45.0, aspect, min, max),
-        };
-    }
-};
-
 layout: VkPipelineLayout,
 pipeline: VkPipeline,
 descriptorLayout: VkDescriptorSetLayout,
+descriptorSets: []VkDescriptorSet,
+cameraBuffer: Buffer(Camera, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT),
 
-pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
+pub fn init(vulkan: Vulkan, renderPass: VkRenderPass, camera: Camera) !Self {
+    const cameraBuffer = try Buffer(Camera, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT).init(vulkan, &[1]Camera{camera});
 
-    // Descriptors
+    var descriptorLayout: VkDescriptorSetLayout = undefined;
+
     const CameraBufferLayout = VkDescriptorSetLayoutBinding{
         .binding = 0,
         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -40,37 +31,6 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
         .pImmutableSamplers = null,
     };
-
-    // const camera = Camera.new(Vec3.new(0.0, 0.0, 10.0), Vec3.new(0.0, 0.0, 0.0), 15.0, 0.1, 20.0);
-    // const CameraBuffer = try Buffer(Camera, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT).init(vulkan, &camera);
-
-    // var descriptorSet: vKDescriptorSet = undefined;
-    // const descriptorWriteUniform = VkWriteDescriptorSet{
-    //     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-    //     .dstSet = descriptorSet,
-    //     .dstBinding = 0,
-    //     .dstArrayElement = 0,
-    //     .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-    //     .descriptorCount = 1,
-    //     .pBufferInfo = &VkDescriptorBufferInfo{
-    //         .buffer = CameraBuffer,
-    //         .offset = 0,
-    //         .range = @sizeOf(Camera),
-    //     },
-    //     .pImageInfo = null,
-    //     .pTexelBufferView = null,
-    //     .pNext = null,
-    // };
-
-    // const descriptorAllocation = VkDescriptorSetAllocateInfo{
-    //     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-    //     .descriptorPool = vulkan.descriptorPool,
-    //     .descriptorSetCount = 1,
-    //     .pSetLayouts = &CameraBufferLayout,
-    //     .pNext = null,
-    // };
-
-    // try checkSuccess(vkAllocateDescriptorSets(vulkan.device, &descriptorAllocation, descriptorSet), error.DescriptorAllocationFailed);
 
     const descriptorInfo = VkDescriptorSetLayoutCreateInfo{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -80,16 +40,53 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
         .flags = 0,
     };
 
-    var descriptorLayout: VkDescriptorSetLayout = undefined;
-
     try checkSuccess(
         vkCreateDescriptorSetLayout(vulkan.device, &descriptorInfo, null, &descriptorLayout),
         error.VulkanPipelineLayoutCreationFailed,
     );
 
-    // const descriptorWrites = [_]VkWriteDescriptorSet{descriptorWriteUniform};
+    // Descriptors
 
-    // vkUpdateDescriptorSets(self.device, descriptorWrites.len, &descriptorWrites, 0, null);
+    var layouts = try vulkan.allocator.alloc(VkDescriptorSetLayout, vulkan.swapchain.images.len);
+
+    for (layouts) |*layout| layout.* = descriptorLayout;
+
+    defer vulkan.allocator.free(layouts);
+
+    var descriptorSets: []VkDescriptorSet = try vulkan.allocator.alloc(VkDescriptorSet, vulkan.swapchain.images.len);
+
+    const descriptorAllocation = VkDescriptorSetAllocateInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = vulkan.descriptorPool,
+        .descriptorSetCount = 2,
+        .pSetLayouts = layouts.ptr,
+        .pNext = null,
+    };
+
+    try checkSuccess(vkAllocateDescriptorSets(vulkan.device, &descriptorAllocation, descriptorSets.ptr), error.DescriptorAllocationFailed);
+
+    for (descriptorSets) |descriptorSet| {
+        const bufferInfo = VkDescriptorBufferInfo{
+            .buffer = cameraBuffer.buffer,
+            .offset = 0,
+            .range = @sizeOf(Camera),
+        };
+
+        const descriptorWriteUniform = VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = descriptorSet,
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .pBufferInfo = &bufferInfo,
+            .pImageInfo = null,
+            .pTexelBufferView = null,
+            .pNext = null,
+        };
+
+        vkUpdateDescriptorSets(vulkan.device, 0, &[_]VkWriteDescriptorSet{descriptorWriteUniform}, 0, null);
+    }
 
     // Pipeline
 
@@ -294,14 +291,18 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
     );
 
     return Self{
+        .cameraBuffer = cameraBuffer,
         .layout = pipeline_layout,
         .pipeline = pipeline,
         .descriptorLayout = descriptorLayout,
+        .descriptorSets = descriptorSets,
     };
 }
 
 pub fn deinit(self: Self, vulkan: Vulkan) void {
+    self.cameraBuffer.deinit(vulkan);
     vkDestroyPipeline(vulkan.device, self.pipeline, null);
     vkDestroyPipelineLayout(vulkan.device, self.layout, null);
     vkDestroyDescriptorSetLayout(vulkan.device, self.descriptorLayout, null);
+    vulkan.allocator.free(self.descriptorSets);
 }

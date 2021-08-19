@@ -9,16 +9,29 @@ const Window = Vulkan.Window;
 
 usingnamespace Vulkan.C;
 usingnamespace Vulkan.Utils;
+usingnamespace @import("zalgebra");
 
 pub const Pipeline = @import("pipeline.zig");
 pub const Renderpass = @import("renderpass.zig");
 
 const Vertex = Pipeline.Vertex;
-const Vec2 = Pipeline.Vec2;
-const Vec3 = Pipeline.Vec3;
 
 pub const log_level = .warn;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+
+pub const Camera = struct {
+    position: Vec3,
+    view: Mat4,
+    proj: Mat4,
+
+    pub fn new(eye: Vec3, focus: Vec3, aspect: f32, min: f32, max: f32) Camera {
+        return Camera{
+            .position = eye,
+            .view = Mat4.lookAt(eye, focus, Vec3.new(0.0, 1.0, 0.0)),
+            .proj = Mat4.perspective(45.0, aspect, min, max),
+        };
+    }
+};
 
 const vertices = [_]Vertex{
     Vertex{ .pos = Vec2.new(-0.5, -0.5), .color = Vec3.new(1.0, 0.0, 0.0) },
@@ -48,11 +61,13 @@ pub fn main() !void {
     var vulkan = try Vulkan.init(allocator, window);
     errdefer vulkan.deinit();
 
+    const camera = Camera.new(Vec3.new(0.0, 0.0, 10.0), Vec3.new(0.0, 0.0, 0.0), 15.0, 0.1, 20.0);
+
     var syncronisation = try Vulkan.Synchronization.init(&vulkan, allocator, vulkan.swapchain.images.len);
     errdefer syncronisation.deinit();
 
     const renderpass = try Renderpass.init(vulkan);
-    const pipeline = try Pipeline.init(vulkan, renderpass.renderpass);
+    const pipeline = try Pipeline.init(vulkan, renderpass.renderpass, camera);
 
     const vertex_buffer = try Buffer(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(vulkan, &vertices);
     const index_buffer = try Buffer(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(vulkan, &v_indices);

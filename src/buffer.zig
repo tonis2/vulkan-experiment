@@ -184,6 +184,14 @@ pub fn createBuffer(
     try checkSuccess(vkBindBufferMemory(device, buffer.*, buffer_memory.*, 0), error.VulkanBindBufferMemoryFailure);
 }
 
-// pub const Descriptor = struct {
+pub const BufferInfo = struct { buffer: VkBuffer, size: VkSize, range: VkSize };
+pub const ImageInfo = struct { layout: VkImageLayout, imageView: VkImageView, sampler: VkSampler };
 
-// };
+pub const Descriptor = struct {
+    type: VK_DESCRIPTOR_TYPE,
+    bufferInfo: ?BufferInfo,
+    imageInfo: ?ImageInfo,
+    binding: u32,
+    descriptorCount: u32 = 1,
+    arrayElement: u32,
+};
