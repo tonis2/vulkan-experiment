@@ -25,36 +25,32 @@ pub fn init(width: u32, height: u32) !Self {
     return Self{ .window = window.? };
 }
 
-pub fn deinit(self: *const Self) void {
+pub fn deinit(self: Self) void {
     glfwDestroyWindow(self.window);
     glfwTerminate();
 }
 
-// pub fn registerResizeCallback(self: *Self, callback: *ResizeCallback) void {
-//     glfwSetWindowUserPointer(self.window, callback);
-//     _ = glfwSetFramebufferSizeCallback(self.window, framebufferResizeCallback);
-// }
 
-pub fn pollEvents(self: *const Self) void {
+pub fn pollEvents(self: Self) void {
     _ = self;
     glfwPollEvents();
 }
 
-pub fn waitEvents(self: *const Self) void {
+pub fn waitEvents(self: Self) void {
     _ = self;
     glfwWaitEvents();
 }
 
-pub fn shouldClose(self: *const Self) bool {
+pub fn shouldClose(self: Self) bool {
     return glfwWindowShouldClose(self.window) != GLFW_FALSE;
 }
 
-pub fn isMinimized(self: *const Self) bool {
+pub fn isMinimized(self: Self) bool {
     var size = self.getFramebufferSize();
     return size.width == 0 or size.height == 0;
 }
 
-pub fn getFramebufferSize(self: *const Self) Size {
+pub fn getFramebufferSize(self: Self) Size {
     var width: c_int = 0;
     var height: c_int = 0;
     glfwGetFramebufferSize(self.window, &width, &height);
@@ -64,7 +60,7 @@ pub fn getFramebufferSize(self: *const Self) Size {
     };
 }
 
-pub fn createSurface(self: *const Self, instance: VkInstance) !VkSurfaceKHR {
+pub fn createSurface(self: Self, instance: VkInstance) !VkSurfaceKHR {
     var surface: VkSurfaceKHR = undefined;
     try checkSuccess(
         glfwCreateWindowSurface(instance, self.window, null, &surface),

@@ -28,6 +28,14 @@ const vertices = [_]Vertex{
 
 const v_indices = [_]u16{ 0, 1, 2, 2, 3, 0 };
 
+fn keyCallback(window: ?*GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
+    _ = window;
+    _ = action;
+    _ = scancode;
+    _ = mods;
+    log.info("{d} \n", .{key});
+}
+
 // fn resize(ctx: Context) !void {
 //     while (ctx.window.isMinimized()) {
 //         ctx.window.waitEvents();
@@ -67,6 +75,8 @@ pub fn main() !void {
         vulkan.deinit();
         window.deinit();
     }
+
+    _ = glfwSetKeyCallback(window.window, keyCallback);
 
     while (!window.shouldClose()) {
         window.pollEvents();
