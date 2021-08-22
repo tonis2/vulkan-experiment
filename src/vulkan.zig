@@ -12,6 +12,7 @@ pub const Buffer = @import("buffer.zig");
 pub const C = @import("c.zig");
 pub const Utils = @import("utils.zig");
 pub const ResizeCallback = Window.ResizeCallback;
+pub const Descriptor = @import("descriptor.zig");
 
 usingnamespace C;
 usingnamespace Utils;
@@ -38,7 +39,6 @@ swapchain: SwapChain,
 command_pool: VkCommandPool,
 commandbuffers: []VkCommandBuffer,
 debug_messenger: ?VkDebugUtilsMessengerEXT,
-descriptorPool: VkDescriptorPool,
 window: Window,
 
 // TODO: use errdefer to clean up stuff in case of errors
@@ -131,7 +131,6 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
 
     const command_pool = try createCommandPool(device, indices);
     const commandbuffers = try createCommandBuffers(device, command_pool, allocator, swapchain.images.len);
-    const descriptorPool = try createDescriptorPool(@intCast(u32, swapchain.images.len), device);
 
     return Self{
         .allocator = allocator,
@@ -145,18 +144,12 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
         .swapchain = swapchain,
         .command_pool = command_pool,
         .commandbuffers = commandbuffers,
-        .descriptorPool = descriptorPool,
         .window = window,
         .debug_messenger = debug_messenger,
     };
 }
 
 pub fn deinit(self: Self) void {
-    const result = vkDeviceWaitIdle(self.device);
-    if (result != VK_SUCCESS) {
-        log.warn("Unable to wait for Vulkan device to be idle before cleanup", .{});
-    }
-
     self.swapchain.deinit(self.device);
 
     vkFreeCommandBuffers(
@@ -167,7 +160,6 @@ pub fn deinit(self: Self) void {
     );
     self.allocator.free(self.commandbuffers);
 
-    vkDestroyDescriptorPool(self.device, self.descriptorPool, null);
     vkDestroyCommandPool(self.device, self.command_pool, null);
     vkDestroyDevice(self.device, null);
 
@@ -488,33 +480,6 @@ fn createFence(device: VkDevice) !VkFence {
     return fence;
 }
 
-fn createDescriptorPool(size: u32, device: VkDevice) !VkDescriptorPool {
-    const poolSizeUniform = VkDescriptorPoolSize{
-        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = size,
-    };
-
-    const poolSizeSampler = VkDescriptorPoolSize{
-        .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = size,
-    };
-
-    const poolSizes = [_]VkDescriptorPoolSize{ poolSizeUniform, poolSizeSampler };
-
-    const poolInfo = VkDescriptorPoolCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .poolSizeCount = poolSizes.len,
-        .pPoolSizes = &poolSizes,
-        .maxSets = size,
-        .pNext = null,
-        .flags = 0,
-    };
-
-    var descriptorPool: VkDescriptorPool = undefined;
-    try checkSuccess(vkCreateDescriptorPool(device, &poolInfo, null, &descriptorPool), error.VulkanDescriptorPoolFailed);
-    return descriptorPool;
-}
-
 pub const QueueFamilyIndices = struct {
     graphics_family: ?u32,
     present_family: ?u32,
@@ -618,14 +583,21 @@ pub const Synchronization = struct {
     }
 
     pub fn deinit(self: Synchronization) void {
+        const result = vkDeviceWaitIdle(self.vulkan.device);
+        if (result != VK_SUCCESS) {
+            log.warn("Unable to wait for Vulkan device to be idle before cleanup", .{});
+        }
+
         for (self.render_finished_semaphores) |semaphore| {
             vkDestroySemaphore(self.vulkan.device, semaphore, null);
         }
+
         self.allocator.free(self.render_finished_semaphores);
 
         for (self.image_available_semaphores) |semaphore| {
             vkDestroySemaphore(self.vulkan.device, semaphore, null);
         }
+
         self.allocator.free(self.image_available_semaphores);
 
         for (self.in_flight_fences) |fence| {

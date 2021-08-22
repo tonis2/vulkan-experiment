@@ -1,30 +1,45 @@
+const std = @import("std");
 const Vulkan = @import("vulkan");
 const Buffer = Vulkan.Buffer;
+const Descriptor = Vulkan.Descriptor;
 
 usingnamespace @import("zalgebra");
 usingnamespace Vulkan.C;
 usingnamespace Vulkan.Utils;
 
 const Self = @This();
-const Camera = @import("main.zig").Camera;
 
 pub const Vertex = struct {
     pos: Vec2,
     color: Vec3,
 };
 
+const UniformBufferObject = struct {
+    model: Mat4,
+    view: Mat4,
+    proj: Mat4,
+};
+
 layout: VkPipelineLayout,
 pipeline: VkPipeline,
-descriptorLayout: VkDescriptorSetLayout,
 descriptorSets: VkDescriptorSet,
-cameraBuffer: Buffer.From(Camera, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT),
+descriptorLayout: VkDescriptorSetLayout,
+descriptorPool: VkDescriptorPool,
+buffers: Buffer.From(UniformBufferObject, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT),
 
-pub fn init(vulkan: Vulkan, renderPass: VkRenderPass, camera: Camera) !Self {
-    const cameraBuffer = try Buffer.From(Camera, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT).init(vulkan, &[1]Camera{camera});
+pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
+    const ubo = UniformBufferObject{
+        .model = Mat4.identity(),
+        .view = Mat4.identity(),
+        .proj = Mat4.identity(),
+    };
+
+    var buffers = try Buffer.From(UniformBufferObject, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT).init(vulkan, &[_]UniformBufferObject{ubo});
 
     // Descriptors
-
     var descriptorLayout: VkDescriptorSetLayout = undefined;
+    var descriptorPool: VkDescriptorPool = undefined;
+    var descriptorSets: VkDescriptorSet = undefined;
 
     const CameraBufferLayout = VkDescriptorSetLayoutBinding{
         .binding = 0,
@@ -47,15 +62,30 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass, camera: Camera) !Self {
         error.VulkanPipelineLayoutCreationFailed,
     );
 
+    var poolSizes = [1]VkDescriptorPoolSize{VkDescriptorPoolSize{
+        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+    }};
+
+    const poolInfo = VkDescriptorPoolCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .poolSizeCount = 1,
+        .pPoolSizes = &poolSizes,
+        .maxSets = @intCast(u32, vulkan.swapchain.images.len),
+        .pNext = null,
+        .flags = 0,
+    };
+
+    try checkSuccess(vkCreateDescriptorPool(vulkan.device, &poolInfo, null, &descriptorPool), error.VulkanDescriptorPoolFailed);
+
     const descriptorAllocation = VkDescriptorSetAllocateInfo{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = vulkan.descriptorPool,
+        .descriptorPool = descriptorPool,
         .descriptorSetCount = 1,
         .pSetLayouts = &descriptorLayout,
         .pNext = null,
     };
 
-    var descriptorSets: VkDescriptorSet = undefined;
     try checkSuccess(vkAllocateDescriptorSets(vulkan.device, &descriptorAllocation, &descriptorSets), error.DescriptorAllocationFailed);
 
     const descriptorWriteUniform = VkWriteDescriptorSet{
@@ -66,9 +96,9 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass, camera: Camera) !Self {
         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = 1,
         .pBufferInfo = &VkDescriptorBufferInfo{
-            .buffer = cameraBuffer.buffer,
+            .buffer = buffers.buffer,
             .offset = 0,
-            .range = @sizeOf(Camera),
+            .range = @sizeOf(UniformBufferObject),
         },
         .pImageInfo = null,
         .pTexelBufferView = null,
@@ -240,8 +270,8 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass, camera: Camera) !Self {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = null,
         .flags = 0,
-        .setLayoutCount = 0,
-        .pSetLayouts = null,
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptorLayout,
         .pushConstantRangeCount = 0,
         .pPushConstantRanges = null,
     };
@@ -280,17 +310,19 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass, camera: Camera) !Self {
     );
 
     return Self{
-        .cameraBuffer = cameraBuffer,
+        .descriptorSets = descriptorSets,
+        .descriptorLayout = descriptorLayout,
+        .descriptorPool = descriptorPool,
+        .buffers = buffers,
         .layout = pipeline_layout,
         .pipeline = pipeline,
-        .descriptorLayout = descriptorLayout,
-        .descriptorSets = descriptorSets,
     };
 }
 
 pub fn deinit(self: Self, vulkan: Vulkan) void {
-    self.cameraBuffer.deinit(vulkan);
+    self.buffers.deinit(vulkan);
+    vkDestroyDescriptorSetLayout(vulkan.device, self.descriptorLayout, null);
+    vkDestroyDescriptorPool(vulkan.device, self.descriptorPool, null);
     vkDestroyPipeline(vulkan.device, self.pipeline, null);
     vkDestroyPipelineLayout(vulkan.device, self.layout, null);
-    vkDestroyDescriptorSetLayout(vulkan.device, self.descriptorLayout, null);
 }
