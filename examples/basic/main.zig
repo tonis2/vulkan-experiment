@@ -6,6 +6,7 @@ const Vulkan = @import("vulkan");
 
 const Buffer = Vulkan.Buffer;
 const Window = Vulkan.Window;
+const Camera = @import("camera.zig");
 
 usingnamespace Vulkan.C;
 usingnamespace Vulkan.Utils;
@@ -20,21 +21,13 @@ pub const log_level = .info;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
 const vertices = [_]Vertex{
-    Vertex{ .pos = Vec2.new(-0.5, -0.5), .color = Vec3.new(1.0, 0.0, 0.0) },
-    Vertex{ .pos = Vec2.new(0.5, -0.5), .color = Vec3.new(0.0, 1.0, 0.0) },
-    Vertex{ .pos = Vec2.new(0.5, 0.5), .color = Vec3.new(0.0, 0.0, 1.0) },
-    Vertex{ .pos = Vec2.new(-0.5, 0.5), .color = Vec3.new(1.0, 1.0, 1.0) },
+    Vertex{ .pos = Vec3.new(0.0, 0.0, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
+    Vertex{ .pos = Vec3.new(300, 0.0, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
+    Vertex{ .pos = Vec3.new(300, 300, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
+    Vertex{ .pos = Vec3.new(0.0, 300, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
 };
 
 const v_indices = [_]u16{ 0, 1, 2, 2, 3, 0 };
-
-fn keyCallback(window: ?*GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
-    _ = window;
-    _ = action;
-    _ = scancode;
-    _ = mods;
-    log.info("{d} \n", .{key});
-}
 
 // fn resize(ctx: Context) !void {
 //     while (ctx.window.isMinimized()) {
@@ -44,23 +37,36 @@ fn keyCallback(window: ?*GLFWwindow, key: c_int, scancode: c_int, action: c_int,
 //     try checkSuccess(vkDeviceWaitIdle(ctx.vulkan.device), error.VulkanDeviceWaitIdleFailure);
 //     ctx.recreateSwapChain();
 // }
+fn keyCallback(window: ?*GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
+    _ = window;
+    _ = action;
+    _ = scancode;
+    _ = mods;
+    log.info("{d} \n", .{key});
+}
 
 pub fn main() !void {
     const allocator = &gpa.allocator;
 
     defer std.debug.assert(!gpa.deinit());
 
-    const window = try Window.init(1400, 900);
+    const WIDTH = 1400;
+    const HEIGHT = 800;
+
+    const window = try Window.init(WIDTH, HEIGHT);
     errdefer window.deinit();
+
     var vulkan = try Vulkan.init(allocator, window);
     errdefer vulkan.deinit();
 
     var syncronisation = try Vulkan.Synchronization.init(&vulkan, allocator, vulkan.swapchain.images.len);
     errdefer syncronisation.deinit();
 
-    const renderpass = try Renderpass.init(vulkan);
-    const pipeline = try Pipeline.init(vulkan, renderpass.renderpass);
+    var camera = Camera.new(WIDTH, HEIGHT, 400);
+    camera.translate(Vec3.new(300.0, 300.0, 0.0));
 
+    const renderpass = try Renderpass.init(vulkan);
+    const pipeline = try Pipeline.init(vulkan, renderpass.renderpass, camera);
     const vertex_buffer = try Buffer.From(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(vulkan, &vertices);
     const index_buffer = try Buffer.From(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(vulkan, &v_indices);
 

@@ -12,7 +12,7 @@ pub const Buffer = @import("buffer.zig");
 pub const C = @import("c.zig");
 pub const Utils = @import("utils.zig");
 pub const ResizeCallback = Window.ResizeCallback;
-pub const Descriptor = @import("descriptor.zig");
+
 
 usingnamespace C;
 usingnamespace Utils;

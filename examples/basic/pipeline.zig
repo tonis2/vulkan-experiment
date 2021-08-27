@@ -1,7 +1,7 @@
 const std = @import("std");
 const Vulkan = @import("vulkan");
 const Buffer = Vulkan.Buffer;
-const Descriptor = Vulkan.Descriptor;
+const Camera = @import("camera.zig");
 
 usingnamespace @import("zalgebra");
 usingnamespace Vulkan.C;
@@ -10,14 +10,8 @@ usingnamespace Vulkan.Utils;
 const Self = @This();
 
 pub const Vertex = struct {
-    pos: Vec2,
+    pos: Vec3,
     color: Vec3,
-};
-
-const UniformBufferObject = struct {
-    model: Mat4,
-    view: Mat4,
-    proj: Mat4,
 };
 
 layout: VkPipelineLayout,
@@ -25,16 +19,10 @@ pipeline: VkPipeline,
 descriptorSets: VkDescriptorSet,
 descriptorLayout: VkDescriptorSetLayout,
 descriptorPool: VkDescriptorPool,
-buffers: Buffer.From(UniformBufferObject, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT),
+buffers: Buffer.From(Camera, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT),
 
-pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
-    const ubo = UniformBufferObject{
-        .model = Mat4.identity(),
-        .view = Mat4.identity(),
-        .proj = Mat4.identity(),
-    };
-
-    var buffers = try Buffer.From(UniformBufferObject, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT).init(vulkan, &[_]UniformBufferObject{ubo});
+pub fn init(vulkan: Vulkan, renderPass: VkRenderPass, camera: Camera) !Self {
+    var buffers = try Buffer.From(Camera, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT).init(vulkan, &[_]Camera{camera});
 
     // Descriptors
     var descriptorLayout: VkDescriptorSetLayout = undefined;
@@ -98,7 +86,7 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
         .pBufferInfo = &VkDescriptorBufferInfo{
             .buffer = buffers.buffer,
             .offset = 0,
-            .range = @sizeOf(UniformBufferObject),
+            .range = @sizeOf(Camera),
         },
         .pImageInfo = null,
         .pTexelBufferView = null,
@@ -149,7 +137,7 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass) !Self {
         VkVertexInputAttributeDescription{
             .binding = 0,
             .location = 0,
-            .format = VK_FORMAT_R32G32_SFLOAT,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
             .offset = @offsetOf(Vertex, "pos"),
         },
         VkVertexInputAttributeDescription{
