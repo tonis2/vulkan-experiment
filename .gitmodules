@@ -1,0 +1,3 @@
+[submodule "dependencies/zalgebra"]
+	path = dependencies/zalgebra
+	url = https://github.com/kooparse/zalgebra
