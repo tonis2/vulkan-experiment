@@ -115,7 +115,7 @@ pub fn main() !void {
 
             vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-            vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &[_]VkDescriptorSet{pipeline.descriptorSets}, 0, null);
+            vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &[_]VkDescriptorSet{pipeline.descriptorSets[i]}, 0, null);
 
             const vertex_buffers = [_]VkBuffer{vertex_buffer.buffer};
             const offsets = [_]VkDeviceSize{0};
