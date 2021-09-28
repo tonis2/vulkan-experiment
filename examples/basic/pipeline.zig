@@ -29,18 +29,30 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass, camera: Camera) !Self {
     var descriptorPool: VkDescriptorPool = undefined;
     var descriptorSets: VkDescriptorSet = undefined;
 
-    const CameraBufferLayout = VkDescriptorSetLayoutBinding{
-        .binding = 0,
-        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        .pImmutableSamplers = null,
+    const poolInfo = VkDescriptorPoolCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .poolSizeCount = 1,
+        .pPoolSizes = &[_]VkDescriptorPoolSize{VkDescriptorPoolSize{
+            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+        }},
+        .maxSets = @intCast(u32, vulkan.swapchain.images.len),
+        .pNext = null,
+        .flags = 0,
     };
+
+    try checkSuccess(vkCreateDescriptorPool(vulkan.device, &poolInfo, null, &descriptorPool), error.VulkanDescriptorPoolFailed);
 
     const descriptorInfo = VkDescriptorSetLayoutCreateInfo{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .bindingCount = 1,
-        .pBindings = &[_]VkDescriptorSetLayoutBinding{CameraBufferLayout},
+        .pBindings = &[_]VkDescriptorSetLayoutBinding{VkDescriptorSetLayoutBinding{
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .pImmutableSamplers = null,
+        }},
         .pNext = null,
         .flags = 0,
     };
@@ -49,22 +61,6 @@ pub fn init(vulkan: Vulkan, renderPass: VkRenderPass, camera: Camera) !Self {
         vkCreateDescriptorSetLayout(vulkan.device, &descriptorInfo, null, &descriptorLayout),
         error.VulkanPipelineLayoutCreationFailed,
     );
-
-    var poolSizes = [1]VkDescriptorPoolSize{VkDescriptorPoolSize{
-        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
-    }};
-
-    const poolInfo = VkDescriptorPoolCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .poolSizeCount = 1,
-        .pPoolSizes = &poolSizes,
-        .maxSets = @intCast(u32, vulkan.swapchain.images.len),
-        .pNext = null,
-        .flags = 0,
-    };
-
-    try checkSuccess(vkCreateDescriptorPool(vulkan.device, &poolInfo, null, &descriptorPool), error.VulkanDescriptorPoolFailed);
 
     const descriptorAllocation = VkDescriptorSetAllocateInfo{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
