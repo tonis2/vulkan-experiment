@@ -12,3 +12,4 @@ pub fn checkSuccess(result: VkResult, comptime E: anytype) @TypeOf(E)!void {
         else => return E,
     }
 }
+

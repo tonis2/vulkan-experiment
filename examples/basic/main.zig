@@ -67,8 +67,8 @@ pub fn main() !void {
 
     const renderpass = try Renderpass.init(vulkan);
     const pipeline = try Pipeline.init(vulkan, renderpass.renderpass, camera);
-    const vertex_buffer = try Buffer.From(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(vulkan, &vertices);
-    const index_buffer = try Buffer.From(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(vulkan, &v_indices);
+    const vertex_buffer = try Buffer(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(vulkan, &vertices);
+    const index_buffer = try Buffer(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(vulkan, &v_indices);
 
     defer {
         _ = vkDeviceWaitIdle(vulkan.device);
@@ -115,7 +115,7 @@ pub fn main() !void {
 
             vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-            vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &[_]VkDescriptorSet{pipeline.descriptorSets[i]}, 0, null);
+            vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &[_]VkDescriptorSet{pipeline.descriptor.sets[i]}, 0, null);
 
             const vertex_buffers = [_]VkBuffer{vertex_buffer.buffer};
             const offsets = [_]VkDeviceSize{0};

@@ -8,11 +8,9 @@ const log = std.log;
 
 pub const SwapChain = @import("swapchain.zig");
 pub const Window = @import("window.zig");
-pub const Buffer = @import("buffer.zig");
+pub const Buffer = @import("buffer.zig").Buffer;
 pub const C = @import("c.zig");
 pub const Utils = @import("utils.zig");
-pub const ResizeCallback = Window.ResizeCallback;
-
 
 usingnamespace C;
 usingnamespace Utils;
@@ -689,5 +687,73 @@ pub const Synchronization = struct {
         }
 
         self.currentFrame = (self.currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    }
+};
+
+pub const Descriptor = struct {
+    layouts: []VkDescriptorSetLayout,
+    poolSizes: []VkDescriptorPoolSize,
+    sets: []VkDescriptorSet,
+    pool: VkDescriptorPool,
+    allocator: *Allocator,
+
+    pub fn new(descriptorInfo: VkDescriptorSetLayoutCreateInfo, max_size: usize, device: VkDevice, allocator: *Allocator) !Descriptor {
+        var layouts = try allocator.alloc(VkDescriptorSetLayout, max_size);
+        var sets = try allocator.alloc(VkDescriptorSet, max_size);
+        var poolSizes = try allocator.alloc(VkDescriptorPoolSize, descriptorInfo.bindingCount);
+        var pool: VkDescriptorPool = undefined;
+
+        for (poolSizes) |*poolSize, i| {
+            poolSize.* = VkDescriptorPoolSize{
+                .type = descriptorInfo.pBindings[i].descriptorType,
+                .descriptorCount = @intCast(u32, max_size),
+            };
+        }
+
+        const poolInfo = VkDescriptorPoolCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .poolSizeCount = 1,
+            .pPoolSizes = poolSizes.ptr,
+            .maxSets = @intCast(u32, max_size),
+            .pNext = null,
+            .flags = 0,
+        };
+
+        try checkSuccess(vkCreateDescriptorPool(device, &poolInfo, null, &pool), error.VulkanDescriptorPoolFailed);
+
+        for (layouts) |*layout| {
+            try checkSuccess(
+                vkCreateDescriptorSetLayout(device, &descriptorInfo, null, layout),
+                error.VulkanPipelineLayoutCreationFailed,
+            );
+        }
+
+        try checkSuccess(vkAllocateDescriptorSets(device, &VkDescriptorSetAllocateInfo{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = pool,
+            .descriptorSetCount = @intCast(u32, max_size),
+            .pSetLayouts = layouts.ptr,
+            .pNext = null,
+        }, sets.ptr), error.DescriptorAllocationFailed);
+
+        return Descriptor{
+            .poolSizes = poolSizes,
+            .pool = pool,
+            .layouts = layouts,
+            .sets = sets,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: Descriptor, device: VkDevice) void {
+        for (self.layouts) |layout| {
+            vkDestroyDescriptorSetLayout(device, layout, null);
+        }
+
+        vkDestroyDescriptorPool(device, self.pool, null);
+
+        self.allocator.free(self.poolSizes);
+        self.allocator.free(self.layouts);
+        self.allocator.free(self.sets);
     }
 };

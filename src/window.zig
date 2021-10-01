@@ -3,11 +3,6 @@ const std = @import("std");
 usingnamespace @import("c.zig");
 usingnamespace @import("utils.zig");
 
-pub const ResizeCallback = struct {
-    data: *c_void,
-    cb: fn (*c_void) void,
-};
-
 const Self = @This();
 
 window: *GLFWwindow,
@@ -29,7 +24,6 @@ pub fn deinit(self: Self) void {
     glfwDestroyWindow(self.window);
     glfwTerminate();
 }
-
 
 pub fn pollEvents(self: Self) void {
     _ = self;
