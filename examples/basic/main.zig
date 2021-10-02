@@ -21,10 +21,10 @@ pub const log_level = .info;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
 const vertices = [_]Vertex{
-    Vertex{ .pos = Vec3.new(0.0, 0.0, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
-    Vertex{ .pos = Vec3.new(300, 0.0, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
-    Vertex{ .pos = Vec3.new(300, 300, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
-    Vertex{ .pos = Vec3.new(0.0, 300, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
+    Vertex{ .pos = Vec3.new(50.0, 50.0, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
+    Vertex{ .pos = Vec3.new(400, 50.0, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
+    Vertex{ .pos = Vec3.new(400, 450, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
+    Vertex{ .pos = Vec3.new(50.0, 450, 1.0), .color = Vec3.new(1.0, 1.0, 1.0) },
 };
 
 const v_indices = [_]u16{ 0, 1, 2, 2, 3, 0 };
@@ -63,7 +63,7 @@ pub fn main() !void {
     errdefer syncronisation.deinit();
 
     var camera = Camera.new(WIDTH, HEIGHT, 400);
-    camera.translate(Vec3.new(300.0, 300.0, 0.0));
+    camera.translate(Vec3.new(0.0, 0.0, 0.0));
 
     const renderpass = try Renderpass.init(vulkan);
     const pipeline = try Pipeline.init(vulkan, renderpass.renderpass, camera);
@@ -82,52 +82,49 @@ pub fn main() !void {
         window.deinit();
     }
 
-    _ = glfwSetKeyCallback(window.window, keyCallback);
+    // _ = glfwSetKeyCallback(window.window, keyCallback);
 
-    while (!window.shouldClose()) {
-        window.pollEvents();
-        for (vulkan.commandbuffers) |buffer, i| {
-            const begin_info = VkCommandBufferBeginInfo{
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-                .pNext = null,
-                .flags = 0,
-                .pInheritanceInfo = null,
-            };
+    // while (!window.shouldClose()) {
+    //     window.pollEvents();
+    //     for (vulkan.commandbuffers) |buffer, i| {
+    //         const begin_info = VkCommandBufferBeginInfo{
+    //             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+    //             .pNext = null,
+    //             .flags = 0,
+    //             .pInheritanceInfo = null,
+    //         };
 
-            try checkSuccess(vkBeginCommandBuffer(buffer, &begin_info), error.VulkanBeginCommandBufferFailure);
+    //         try checkSuccess(vkBeginCommandBuffer(buffer, &begin_info), error.VulkanBeginCommandBufferFailure);
 
-            const clear_color = [_]VkClearValue{VkClearValue{
-                .color = VkClearColorValue{ .float32 = [_]f32{ 0.0, 0.0, 0.0, 1.0 } },
-            }};
+    //         const clear_color = [_]VkClearValue{VkClearValue{
+    //             .color = VkClearColorValue{ .float32 = [_]f32{ 0.0, 0.0, 0.0, 1.0 } },
+    //         }};
 
-            const render_pass_info = VkRenderPassBeginInfo{
-                .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-                .pNext = null,
-                .renderPass = renderpass.renderpass,
-                .framebuffer = renderpass.framebuffers[i],
-                .renderArea = VkRect2D{
-                    .offset = VkOffset2D{ .x = 0, .y = 0 },
-                    .extent = vulkan.swapchain.extent,
-                },
-                .clearValueCount = 1,
-                .pClearValues = &clear_color,
-            };
+    //         const render_pass_info = VkRenderPassBeginInfo{
+    //             .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+    //             .pNext = null,
+    //             .renderPass = renderpass.renderpass,
+    //             .framebuffer = renderpass.framebuffers[i],
+    //             .renderArea = VkRect2D{
+    //                 .offset = VkOffset2D{ .x = 0, .y = 0 },
+    //                 .extent = vulkan.swapchain.extent,
+    //             },
+    //             .clearValueCount = 1,
+    //             .pClearValues = &clear_color,
+    //         };
 
-            vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-            vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-            vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &[_]VkDescriptorSet{pipeline.descriptor.sets[i]}, 0, null);
+    //         vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+    //         vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
+    //         vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &[_]VkDescriptorSet{pipeline.descriptor.sets[i]}, 0, null);
+    //         vkCmdBindVertexBuffers(buffer, 0, 1, &[_]VkBuffer{vertex_buffer.buffer}, &[_]VkDeviceSize{0});
+    //         vkCmdBindIndexBuffer(buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
 
-            const vertex_buffers = [_]VkBuffer{vertex_buffer.buffer};
-            const offsets = [_]VkDeviceSize{0};
-            vkCmdBindVertexBuffers(buffer, 0, 1, &vertex_buffers, &offsets);
-            vkCmdBindIndexBuffer(buffer, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+    //         vkCmdDrawIndexed(buffer, @intCast(u32, index_buffer.len), 1, 0, 0, 0);
+    //         vkCmdEndRenderPass(buffer);
 
-            vkCmdDrawIndexed(buffer, @intCast(u32, index_buffer.len), 1, 0, 0, 0);
-            vkCmdEndRenderPass(buffer);
+    //         try checkSuccess(vkEndCommandBuffer(buffer), error.VulkanCommandBufferEndFailure);
+    //     }
 
-            try checkSuccess(vkEndCommandBuffer(buffer), error.VulkanCommandBufferEndFailure);
-        }
-
-        try syncronisation.drawFrame(vulkan.commandbuffers);
-    }
+    //     try syncronisation.drawFrame(vulkan.commandbuffers);
+    // }
 }

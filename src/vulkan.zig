@@ -12,20 +12,15 @@ pub const Buffer = @import("buffer.zig").Buffer;
 pub const C = @import("c.zig");
 pub const Utils = @import("utils.zig");
 
+const ZVA = @import("zva").Allocator;
+
 usingnamespace C;
 usingnamespace Utils;
-
-// Couldn't use UINT64_MAX for some reason
-
-const enable_validation_layers = std.debug.runtime_safety;
-
-const device_extensions = [_][*:0]const u8{
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
 
 const Self = @This();
 
 allocator: *Allocator,
+zvAllocator: ZVA,
 instance: VkInstance,
 physical_device: VkPhysicalDevice,
 device: VkDevice,
@@ -130,8 +125,30 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
     const command_pool = try createCommandPool(device, indices);
     const commandbuffers = try createCommandBuffers(device, command_pool, allocator, swapchain.images.len);
 
+    var deviceMemProperties: VkPhysicalDeviceMemoryProperties = undefined;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &deviceMemProperties);
+    var deviceProperties: VkPhysicalDeviceProperties = undefined;
+
+    vkGetPhysicalDeviceProperties(physical_device, &deviceProperties);
+
+    // zig fmt: off
+    var zva = ZVA.init(allocator, .{ 
+        .device = device, 
+        .physicalDevice = physical_device, 
+        .physicalDeviceMemoryProperties = deviceMemProperties,
+        .physicalDeviceProperties = deviceProperties,
+        .minBlockSize = 128 * 1024 * 1024,
+
+        .allocateMemory = allocateMemory,
+        .freeMemory = freeMemory,
+        .mapMemory = mapMemory,
+        .unmapMemory = unmapMemory
+    });
+    // zig fmt: on
+
     return Self{
         .allocator = allocator,
+        .zvAllocator = zva,
         .instance = instance,
         .physical_device = physical_device,
         .device = device,
@@ -757,3 +774,19 @@ pub const Descriptor = struct {
         self.allocator.free(self.sets);
     }
 };
+
+pub fn allocateMemory(device: VkDevice, allocation: VkMemoryAllocateInfo, memory: *VkDeviceMemory) !void {
+    try checkSuccess(vkAllocateMemory(device, &allocation, null, memory), error.VulkanAllocateMemoryFailure);
+}
+
+pub fn freeMemory(device: VkDevice, memory: *VkDeviceMemory) void {
+    vkFreeMemory(device, memory.*, null);
+}
+
+pub fn mapMemory(device: VkDevice, memory: *VkDeviceMemory, offset: usize, size: VkDeviceSize, flags: VkMemoryMapFlags, data: ?*c_void) void {
+    try checkSuccess(vkMapMemory(device, memory, offset, size, flags, data), error.VulkanMapMemoryError);
+}
+
+pub fn unmapMemory(device: VkDevice, memory: *VkDeviceMemory) void {
+    vkUnmapMemory(vulkan.device, memory);
+}

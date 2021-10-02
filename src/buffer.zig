@@ -183,4 +183,3 @@ pub fn createBuffer(
 
     try checkSuccess(vkBindBufferMemory(device, buffer.*, buffer_memory.*, 0), error.VulkanBindBufferMemoryFailure);
 }
-
