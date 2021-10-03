@@ -29,26 +29,18 @@ const vertices = [_]Vertex{
 
 const v_indices = [_]u16{ 0, 1, 2, 2, 3, 0 };
 
-// fn resize(ctx: Context) !void {
-//     while (ctx.window.isMinimized()) {
-//         ctx.window.waitEvents();
-//     }
-
-//     try checkSuccess(vkDeviceWaitIdle(ctx.vulkan.device), error.VulkanDeviceWaitIdleFailure);
-//     ctx.recreateSwapChain();
+// fn keyCallback(window: ?*GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
+//     _ = window;
+//     _ = action;
+//     _ = scancode;
+//     _ = mods;
+//     log.info("{d} \n", .{key});
 // }
-fn keyCallback(window: ?*GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
-    _ = window;
-    _ = action;
-    _ = scancode;
-    _ = mods;
-    log.info("{d} \n", .{key});
-}
 
 pub fn main() !void {
     const allocator = &gpa.allocator;
 
-    defer std.debug.assert(!gpa.deinit());
+    // defer std.debug.assert(!gpa.deinit());
 
     const WIDTH = 1400;
     const HEIGHT = 800;
@@ -65,18 +57,21 @@ pub fn main() !void {
     var camera = Camera.new(WIDTH, HEIGHT, 400);
     camera.translate(Vec3.new(0.0, 0.0, 0.0));
 
-    const renderpass = try Renderpass.init(vulkan);
-    const pipeline = try Pipeline.init(vulkan, renderpass.renderpass, camera);
+    // const renderpass = try Renderpass.init(vulkan);
+    // const pipeline = try Pipeline.init(vulkan, renderpass.renderpass, camera);
     const vertex_buffer = try Buffer(Vertex, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT).init(vulkan, &vertices);
     const index_buffer = try Buffer(u16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT).init(vulkan, &v_indices);
+
+    _ = vertex_buffer;
+    _ = index_buffer;
 
     defer {
         _ = vkDeviceWaitIdle(vulkan.device);
 
         vertex_buffer.deinit(vulkan);
         index_buffer.deinit(vulkan);
-        renderpass.deinit(vulkan);
-        pipeline.deinit(vulkan);
+        // renderpass.deinit(vulkan);
+        // pipeline.deinit(vulkan);
         syncronisation.deinit();
         vulkan.deinit();
         window.deinit();

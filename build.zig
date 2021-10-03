@@ -19,10 +19,11 @@ pub fn build(b: *Builder) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
-    const zva = Pkg{ .name = "zva", .path = FileSource{ .path = "dependencies/zva/main.zig" } };
+    const cImports = Pkg{ .name = "cImports", .path = FileSource{ .path = "src/c.zig" } };
+    const zva = Pkg{ .name = "zva", .path = FileSource{ .path = "dependencies/zva/main.zig" }, .dependencies = &.{cImports} };
     const Image = Pkg{ .name = "image", .path = FileSource{ .path = "dependencies/images/main.zig" } };
     const Zalgebra = Pkg{ .name = "zalgebra", .path = FileSource{ .path = "dependencies/zalgebra/src/main.zig" } };
-    const Vulkan = Pkg{ .name = "vulkan", .path = FileSource{ .path = "src/vulkan.zig" } };
+    const Vulkan = Pkg{ .name = "vulkan", .path = FileSource{ .path = "src/vulkan.zig" }, .dependencies = &.{zva} };
 
     for (examples) |example| {
         const name = example[0];
@@ -37,7 +38,7 @@ pub fn build(b: *Builder) void {
         exe.linkSystemLibrary("vulkan");
         exe.addPackage(Vulkan);
         exe.addPackage(Zalgebra);
-        exe.addPackage(zva);
+
         exe.addPackage(Image);
         exe.install();
 

@@ -20,7 +20,7 @@ usingnamespace Utils;
 const Self = @This();
 
 allocator: *Allocator,
-zvAllocator: ZVA,
+vAllocator: ZVA,
 instance: VkInstance,
 physical_device: VkPhysicalDevice,
 device: VkDevice,
@@ -132,7 +132,7 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
     vkGetPhysicalDeviceProperties(physical_device, &deviceProperties);
 
     // zig fmt: off
-    var zva = ZVA.init(allocator, .{ 
+    var zva = try ZVA.init(allocator, .{ 
         .device = device, 
         .physicalDevice = physical_device, 
         .physicalDeviceMemoryProperties = deviceMemProperties,
@@ -148,7 +148,7 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
 
     return Self{
         .allocator = allocator,
-        .zvAllocator = zva,
+        .vAllocator = zva,
         .instance = instance,
         .physical_device = physical_device,
         .device = device,
@@ -166,6 +166,7 @@ pub fn init(allocator: *Allocator, window: Window) !Self {
 
 pub fn deinit(self: Self) void {
     self.swapchain.deinit(self.device);
+    self.vAllocator.deinit();
 
     vkFreeCommandBuffers(
         self.device,
@@ -190,15 +191,13 @@ pub fn createCommandBuffers(device: VkDevice, commandpool: VkCommandPool, alloca
     var buffers = try allocator.alloc(VkCommandBuffer, len);
     errdefer allocator.free(buffers);
 
-    const alloc_info = VkCommandBufferAllocateInfo{
+    try allocateCommandBuffers(device, &VkCommandBufferAllocateInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .pNext = null,
         .commandPool = commandpool,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = @intCast(u32, buffers.len),
-    };
-
-    try allocateCommandBuffers(device, &alloc_info, buffers.ptr);
+    }, buffers.ptr);
 
     return buffers;
 }
@@ -213,36 +212,6 @@ pub fn recreateSwapChain(self: *Self) !void {
         self.surface,
         self.window,
         self.queue_family_indices,
-    );
-}
-
-pub fn queueSubmit(queue: VkQueue, submit_count: u32, submit_info: *const VkSubmitInfo, fence: ?VkFence) !void {
-    try checkSuccess(
-        vkQueueSubmit(queue, submit_count, submit_info, fence orelse null),
-        error.VulkanQueueSubmitFailure,
-    );
-}
-
-pub fn queueWaitIdle(queue: VkQueue) !void {
-    try checkSuccess(vkQueueWaitIdle(queue), error.VulkanQueueWaitIdleFailure);
-}
-
-pub fn beginCommandBuffer(buffer: VkCommandBuffer, info: *const VkCommandBufferBeginInfo) !void {
-    try checkSuccess(vkBeginCommandBuffer(buffer, info), error.VulkanBeginCommandBufferFailure);
-}
-
-pub fn endCommandBuffer(buffer: VkCommandBuffer) !void {
-    try checkSuccess(vkEndCommandBuffer(buffer), error.VulkanCommandBufferEndFailure);
-}
-
-pub fn allocateCommandBuffers(
-    device: VkDevice,
-    info: *const VkCommandBufferAllocateInfo,
-    buffers: [*c]VkCommandBuffer,
-) !void {
-    try checkSuccess(
-        vkAllocateCommandBuffers(device, info, buffers),
-        error.VulkanCommanbBufferAllocationFailure,
     );
 }
 
@@ -775,18 +744,48 @@ pub const Descriptor = struct {
     }
 };
 
-pub fn allocateMemory(device: VkDevice, allocation: VkMemoryAllocateInfo, memory: *VkDeviceMemory) !void {
+pub fn queueSubmit(queue: VkQueue, submit_count: u32, submit_info: *const VkSubmitInfo, fence: ?VkFence) !void {
+    try checkSuccess(
+        vkQueueSubmit(queue, submit_count, submit_info, fence orelse null),
+        error.VulkanQueueSubmitFailure,
+    );
+}
+
+pub fn queueWaitIdle(queue: VkQueue) !void {
+    try checkSuccess(vkQueueWaitIdle(queue), error.VulkanQueueWaitIdleFailure);
+}
+
+pub fn allocateCommandBuffers(
+    device: VkDevice,
+    info: *const VkCommandBufferAllocateInfo,
+    buffers: [*c]VkCommandBuffer,
+) !void {
+    try checkSuccess(
+        vkAllocateCommandBuffers(device, @ptrCast([*c]const VkCommandBufferAllocateInfo, info), buffers),
+        error.VulkanCommanbBufferAllocationFailure,
+    );
+}
+
+pub fn beginCommandBuffer(buffer: VkCommandBuffer, info: *const VkCommandBufferBeginInfo) !void {
+    try checkSuccess(vkBeginCommandBuffer(buffer, @ptrCast([*c]const VkCommandBufferBeginInfo, info)), error.VulkanBeginCommandBufferFailure);
+}
+
+pub fn endCommandBuffer(buffer: VkCommandBuffer) !void {
+    try checkSuccess(vkEndCommandBuffer(buffer), error.VulkanCommandBufferEndFailure);
+}
+
+pub fn allocateMemory(device: VkDevice, allocation: VkMemoryAllocateInfo, memory: *VkDeviceMemory) anyerror!void {
     try checkSuccess(vkAllocateMemory(device, &allocation, null, memory), error.VulkanAllocateMemoryFailure);
 }
 
-pub fn freeMemory(device: VkDevice, memory: *VkDeviceMemory) void {
-    vkFreeMemory(device, memory.*, null);
-}
-
-pub fn mapMemory(device: VkDevice, memory: *VkDeviceMemory, offset: usize, size: VkDeviceSize, flags: VkMemoryMapFlags, data: ?*c_void) void {
+pub fn mapMemory(device: VkDevice, memory: VkDeviceMemory, offset: usize, size: VkDeviceSize, flags: VkMemoryMapFlags, data: *?*c_void) anyerror!void {
     try checkSuccess(vkMapMemory(device, memory, offset, size, flags, data), error.VulkanMapMemoryError);
 }
 
-pub fn unmapMemory(device: VkDevice, memory: *VkDeviceMemory) void {
-    vkUnmapMemory(vulkan.device, memory);
+pub fn freeMemory(device: VkDevice, memory: VkDeviceMemory) void {
+    vkFreeMemory(device, memory, null);
+}
+
+pub fn unmapMemory(device: VkDevice, memory: VkDeviceMemory) void {
+    vkUnmapMemory(device, memory);
 }

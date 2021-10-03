@@ -1,8 +1,8 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 
 usingnamespace @import("c.zig");
 usingnamespace @import("utils.zig");
+usingnamespace @import("zva");
 
 const Vulkan = @import("vulkan.zig");
 
@@ -11,67 +11,76 @@ pub fn Buffer(comptime T: type, usage: c_int) type {
         const Self = @This();
 
         buffer: VkBuffer,
-        memory: VkDeviceMemory,
+        allocation: Allocation,
         len: usize,
 
-        pub fn init(
-            vulkan: Vulkan,
-            content: []const T,
-        ) !Self {
-            const buffer_size = @sizeOf(T) * content.len;
+        pub fn init(vulkan: Vulkan, content: []const T) !Self {
+            const bufferSize = @sizeOf(T) * content.len;
+            var stagingBuffer: VkBuffer = undefined;
 
-            var staging_buffer: VkBuffer = undefined;
-            var staging_memory: VkDeviceMemory = undefined;
-
-            try createBuffer(
-                vulkan.physical_device,
-                vulkan.device,
-                buffer_size,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            var stage_allocation = try createBuffer(
+                .CpuToGpu,
+                VkBufferCreateInfo{
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                    .pNext = null,
+                    .flags = 0,
+                    .size = bufferSize,
+                    .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                    .queueFamilyIndexCount = 0,
+                    .pQueueFamilyIndices = null,
+                },
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                &staging_buffer,
-                &staging_memory,
+                vulkan.device,
+                vulkan.physical_device,
+                vulkan.vAllocator,
+                &stagingBuffer,
             );
+            //  var data: []const T = undefined;
+            // std.mem.copy(T, std.mem.bytesAsSlice(T, stage_allocation.data), data);
 
             defer {
-                vkDestroyBuffer(vulkan.device, staging_buffer, null);
-                vkFreeMemory(vulkan.device, staging_memory, null);
+                vkDestroyBuffer(vulkan.device, stagingBuffer, null);
+                vulkan.vAllocator.free(stage_allocation);
             }
 
-            var data: ?*c_void = undefined;
-            try checkSuccess(vkMapMemory(vulkan.device, staging_memory, 0, buffer_size, 0, &data), error.VulkanMapMemoryError);
-            const bytes = @ptrCast([*]const u8, @alignCast(@alignOf(T), std.mem.sliceAsBytes(content)));
-            @memcpy(@ptrCast([*]u8, data), bytes, buffer_size);
-            vkUnmapMemory(vulkan.device, staging_memory);
-
-            var buffer: VkBuffer = undefined;
-            var memory: VkDeviceMemory = undefined;
-            try createBuffer(
-                vulkan.physical_device,
-                vulkan.device,
-                buffer_size,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
+            var memoryBuffer: VkBuffer = undefined;
+            var memoryAllocation = try createBuffer(
+                .GpuOnly,
+                VkBufferCreateInfo{
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                    .pNext = null,
+                    .flags = 0,
+                    .size = bufferSize,
+                    .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usage,
+                    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                    .queueFamilyIndexCount = 0,
+                    .pQueueFamilyIndices = null,
+                },
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                &buffer,
-                &memory,
+                vulkan.device,
+                vulkan.physical_device,
+                vulkan.vAllocator,
+                &memoryBuffer,
             );
+
             errdefer {
-                vkDestroyBuffer(vulkan.device, buffer, null);
-                vkFreeMemory(vulkan.device, memory, null);
+                vkDestroyBuffer(vulkan.device, memoryBuffer, null);
+                vulkan.vAllocator.free(memoryAllocation);
             }
 
-            try copyBuffer(vulkan.device, vulkan.graphics_queue, vulkan.command_pool, staging_buffer, buffer, buffer_size);
+            try copyBuffer(vulkan.device, vulkan.graphics_queue, vulkan.command_pool, stagingBuffer, memoryBuffer, bufferSize);
 
             return Self{
-                .buffer = buffer,
-                .memory = memory,
-                .len = content.len,
+                .buffer = memoryBuffer,
+                .allocation = memoryAllocation,
+                .len = bufferSize,
             };
         }
 
         pub fn deinit(self: Self, vulkan: Vulkan) void {
             vkDestroyBuffer(vulkan.device, self.buffer, null);
-            vkFreeMemory(vulkan.device, self.memory, null);
+            vulkan.vAllocator.free(self.allocation);
         }
     };
 }
@@ -85,28 +94,27 @@ pub fn copyBuffer(
     size: VkDeviceSize,
 ) !void {
     // OPTIMIZE: Create separate command pool for short lived buffers
-    const alloc_info = VkCommandBufferAllocateInfo{
+
+    var command_buffer: VkCommandBuffer = undefined;
+
+    try Vulkan.allocateCommandBuffers(device, &VkCommandBufferAllocateInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .pNext = null,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandPool = command_pool,
         .commandBufferCount = 1,
-    };
-    var command_buffer: VkCommandBuffer = undefined;
-    try Vulkan.allocateCommandBuffers(device, &alloc_info, &command_buffer);
+    }, &command_buffer);
+
     defer vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
 
-    const begin_info = VkCommandBufferBeginInfo{
+    try Vulkan.beginCommandBuffer(command_buffer, &VkCommandBufferBeginInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .pNext = null,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
         .pInheritanceInfo = null,
-    };
+    });
 
-    try Vulkan.beginCommandBuffer(command_buffer, &begin_info);
-
-    const copy_region = VkBufferCopy{ .srcOffset = 0, .dstOffset = 0, .size = size };
-    vkCmdCopyBuffer(command_buffer, src, dst, 1, &copy_region);
+    vkCmdCopyBuffer(command_buffer, src, dst, 1, &VkBufferCopy{ .srcOffset = 0, .dstOffset = 0, .size = size });
     try Vulkan.endCommandBuffer(command_buffer);
 
     const submit_info = VkSubmitInfo{
@@ -125,6 +133,29 @@ pub fn copyBuffer(
     try Vulkan.queueWaitIdle(graphics_queue);
 }
 
+pub fn createBuffer(
+    memoryUsage: MemoryUsage,
+    info: VkBufferCreateInfo,
+    propertyFlags: VkMemoryPropertyFlags,
+    device: VkDevice,
+    pDevice: VkPhysicalDevice,
+    allocator: Allocator,
+    buffer: *VkBuffer,
+) !Allocation {
+    try checkSuccess(vkCreateBuffer(device, &info, null, buffer), error.VulkanVertexBufferCreationFailed);
+    errdefer vkDestroyBuffer(device, buffer.*, null);
+
+    var mem_reqs: VkMemoryRequirements = undefined;
+    vkGetBufferMemoryRequirements(device, buffer.*, &mem_reqs);
+    var memoryType = try findMemoryType(pDevice, mem_reqs.memoryTypeBits, propertyFlags);
+
+    var allocation = try allocator.alloc(mem_reqs.size, mem_reqs.alignment, memoryType, memoryUsage, .Buffer);
+
+    try checkSuccess(vkBindBufferMemory(device, buffer.*, allocation.memory, allocation.offset), error.VulkanBindBufferMemoryFailure);
+
+    return allocation;
+}
+
 fn findMemoryType(physical_device: VkPhysicalDevice, type_filter: u32, properties: VkMemoryPropertyFlags) !u32 {
     var mem_props: VkPhysicalDeviceMemoryProperties = undefined;
     vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_props);
@@ -139,47 +170,4 @@ fn findMemoryType(physical_device: VkPhysicalDevice, type_filter: u32, propertie
     }
 
     return error.VulkanSuitableMemoryTypeNotFound;
-}
-
-pub fn createBuffer(
-    physical_device: VkPhysicalDevice,
-    device: VkDevice,
-    size: VkDeviceSize,
-    usage: VkBufferUsageFlags,
-    properties: VkMemoryPropertyFlags,
-    buffer: *VkBuffer,
-    buffer_memory: *VkDeviceMemory,
-) !void {
-    const info = VkBufferCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .size = size,
-        .usage = usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount = 0,
-        .pQueueFamilyIndices = null,
-    };
-
-    try checkSuccess(vkCreateBuffer(device, &info, null, buffer), error.VulkanVertexBufferCreationFailed);
-    errdefer vkDestroyBuffer(device, buffer.*, null);
-
-    var mem_reqs: VkMemoryRequirements = undefined;
-    vkGetBufferMemoryRequirements(device, buffer.*, &mem_reqs);
-
-    const alloc_info = VkMemoryAllocateInfo{
-        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .pNext = null,
-        .allocationSize = mem_reqs.size,
-        .memoryTypeIndex = try findMemoryType(physical_device, mem_reqs.memoryTypeBits, properties),
-    };
-
-    // OPTIMIZE: should not allocate for every individual buffer.
-    // allocate a single big chunk of memory and a single buffer, and use offsets instead
-    // (or use VulkanMemoryAllocator).
-    // see: https://developer.nvidia.com/vulkan-memory-management
-    try checkSuccess(vkAllocateMemory(device, &alloc_info, null, buffer_memory), error.VulkanAllocateMemoryFailure);
-    errdefer vkFreeMemory(device, buffer_memory.*, null);
-
-    try checkSuccess(vkBindBufferMemory(device, buffer.*, buffer_memory.*, 0), error.VulkanBindBufferMemoryFailure);
 }

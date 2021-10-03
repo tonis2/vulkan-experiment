@@ -1,24 +1,9 @@
 const std = @import("std");
 const mem = std.mem;
 const Block = @import("block.zig").Block;
-const Config = @import("allocator.zig").Config;
 
-usingnamespace @cImport({
-    @cInclude("vulkan/vulkan.h");
-});
-
-const Allocation = struct {
-    block_id: VkDeviceSize,
-    span_id: VkDeviceSize,
-    memory_type_index: u32,
-
-    memory: VkDeviceMemory,
-
-    offset: VkDeviceSize,
-    size: VkDeviceSize,
-
-    data: []align(8) u8,
-};
+usingnamespace @import("allocator.zig");
+usingnamespace @import("cImports");
 
 pub const Pool = struct {
     config: Config,
@@ -30,29 +15,26 @@ pub const Pool = struct {
     min_block_size: VkDeviceSize,
     memory_type_index: u32,
 
-    blocks: std.ArrayList(?*Block),
+    blocks: std.ArrayList(?Block),
 
     pub fn init(allocator: *mem.Allocator, config: Config, memory_type_index: u32) Pool {
         return Pool{
             .allocator = allocator,
 
-            .config = Config,
+            .config = config,
             .device = config.device,
 
-            .image_granularity = config.physicalDeviceMemoryProperties.limits.buffer_image_granularity,
+            .image_granularity = config.physicalDeviceProperties.limits.bufferImageGranularity,
             .min_block_size = config.minBlockSize,
             .memory_type_index = memory_type_index,
 
-            .blocks = std.ArrayList(?*Block).init(allocator),
+            .blocks = std.ArrayList(?Block).init(allocator),
         };
     }
 
     pub fn deinit(self: Pool) void {
         for (self.blocks.items) |b| {
-            if (b) |block| {
-                block.deinit();
-                self.allocator.destroy(block);
-            }
+            if (b) |block| block.deinit();
         }
         self.blocks.deinit();
     }
@@ -124,9 +106,8 @@ pub const Pool = struct {
             while (block_size < size) {
                 block_size += self.min_block_size;
             }
-            var block = try self.allocator.create(Block);
-            block.* = try Block.init(self.allocator, self.config, self.device, block_size, usage, self.memory_type_index);
-            try self.blocks.append(block);
+
+            try self.blocks.append(try Block.init(self.allocator, self.config, self.device, block_size, usage, self.memory_type_index));
 
             location = .{ .bid = self.blocks.items.len - 1, .sid = 0, .offset = 0, .size = size };
         }
@@ -157,7 +138,7 @@ pub const Pool = struct {
 
     pub fn free(self: *Pool, allocation: Allocation) void {
         var block = self.blocks.items[allocation.block_id];
-        for (block.?.layout.items) |*layout, i| {
+        for (block.?.layout.items) |*layout| {
             if (layout.id == allocation.span_id) {
                 layout.alloc_type = .Free;
                 break;
@@ -165,3 +146,6 @@ pub const Pool = struct {
         }
     }
 };
+inline fn alignOffset(offset: VkDeviceSize, alignment: VkDeviceSize) VkDeviceSize {
+    return ((offset + (alignment - 1)) & ~(alignment - 1));
+}

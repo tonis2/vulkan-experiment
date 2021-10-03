@@ -1,34 +1,10 @@
 const std = @import("std");
 const mem = std.mem;
-const Config = @import("allocator.zig").Config;
 
-usingnamespace @cImport({
-    @cInclude("vulkan/vulkan.h");
-});
+usingnamespace @import("allocator.zig");
+usingnamespace @import("cImports");
 
-const AllocationType = enum {
-    Free,
-    Buffer,
-    Image,
-    ImageLinear,
-    ImageOptimal,
-};
-
-const MemoryUsage = enum {
-    GpuOnly,
-    CpuOnly,
-    CpuToGpu,
-    GpuToCpu,
-};
-
-pub const FunctionPointers = struct {
-    allocateMemory: fn (VkDevice, VkMemoryAllocateInfo, *VkDeviceMemory) !void,
-    freeMemory: fn (VkDevice, *VkDeviceMemory) void,
-    mapMemory: fn (VkDevice, *VkDeviceMemory, usize, VkDeviceSize, usize, ?*c_void) !void,
-    unmapMemory: fn (VkDevice, *VkDeviceMemory) void,
-};
-
-const Block = struct {
+pub const Block = struct {
     const Layout = struct { offset: VkDeviceSize, size: VkDeviceSize, alloc_type: AllocationType, id: usize };
 
     config: Config,
@@ -49,13 +25,14 @@ const Block = struct {
         try layout.append(.{ .offset = 0, .size = size, .alloc_type = .Free, .id = 0 });
 
         const allocation_info = VkMemoryAllocateInfo{
-            .allocation_size = size,
-
-            .memory_type_index = memory_type_index,
+            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .pNext = null,
+            .allocationSize = size,
+            .memoryTypeIndex = memory_type_index,
         };
 
         var memory: VkDeviceMemory = undefined;
-        try config.allocateMemory(device, &allocation_info, null, &memory);
+        try config.allocateMemory(device, allocation_info, &memory);
 
         var data: []align(8) u8 = undefined;
         try config.mapMemory(device, memory, 0, size, 0, @ptrCast(*?*c_void, &data));
@@ -83,6 +60,6 @@ const Block = struct {
             self.config.unmapMemory(self.device, self.memory);
         }
 
-        self.config.freeMemory(self.device, self.memory, null);
+        self.config.freeMemory(self.device, self.memory);
     }
 };
